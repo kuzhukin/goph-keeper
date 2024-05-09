@@ -1,4 +1,4 @@
-package db
+package controller
 
 import (
 	"context"
@@ -7,7 +7,12 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/kuzhukin/goph-keeper/internal/server/handler"
 )
+
+var _ handler.DataHolder = &Controller{}
+var _ handler.Authenticator = &Controller{}
+var _ handler.Registrator = &Controller{}
 
 type Controller struct {
 	db *sql.DB
@@ -36,7 +41,10 @@ func (c *Controller) Stop() error {
 }
 
 func (c *Controller) init() error {
-	createTableQueries := []string{}
+	createTableQueries := []string{
+		createDataTableQuery,
+		createUsersTableQuery,
+	}
 
 	for _, q := range createTableQueries {
 		if err := c.exec(q); err != nil {
@@ -74,5 +82,13 @@ func (c *Controller) Load(key []byte) ([]byte, int, error) {
 }
 
 func (c *Controller) Delete(key []byte) error {
+	return nil
+}
+
+func (c *Controller) Register(user string, password string) error {
+	return nil
+}
+
+func (c *Controller) Authenticate(user string, password string) error {
 	return nil
 }

@@ -7,9 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/kuzhukin/goph-keeper/internal/server/config"
-	"github.com/kuzhukin/goph-keeper/internal/server/db"
+	"github.com/kuzhukin/goph-keeper/internal/server/controller"
 	"github.com/kuzhukin/goph-keeper/internal/server/handler"
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
@@ -28,26 +27,28 @@ const (
 )
 
 type Server struct {
-	httpServer   http.Server
-	dbController *db.Controller
+	httpServer http.Server
+	controller *controller.Controller
 
 	wait chan struct{}
 }
 
 func StartNew(config *config.Config) (*Server, error) {
-	dbController, err := db.StartNewController(config.DataSourceName)
+	controller, err := controller.StartNewController(config.DataSourceName)
 	if err != nil {
 		return nil, fmt.Errorf("start db controller, err=%w", err)
 	}
 
-	router := chi.NewRouter()
+	router := http.NewServeMux()
 
-	router.Handle(loadDataEndpoint, handler.NewDataHandler(dbController))
+	router.Handle(loadDataEndpoint, handler.NewDataHandler(controller))
+	router.Handle(registerEndpoint, handler.NewRegistrationHandler(controller))
+	router.Handle(authEndpoint, handler.NewAuthenticationHandler(controller))
 
 	server := &Server{
-		httpServer:   http.Server{Addr: config.Hostport, Handler: router},
-		dbController: dbController,
-		wait:         make(chan struct{}),
+		httpServer: http.Server{Addr: config.Hostport, Handler: router},
+		controller: controller,
+		wait:       make(chan struct{}),
 	}
 
 	server.start()

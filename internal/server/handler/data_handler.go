@@ -1,21 +1,18 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
 
 var ErrDataAlreadyExist = errors.New("data alreadt exist")
-var ErrInternalProblem = errors.New("storage internal error")
-var ErrDataNotFound = errors.New("storage doesn't have data")
+var ErrInternalProblem = errors.New("holder internal error")
+var ErrDataNotFound = errors.New("holder doesn't have data")
 var ErrBadRevision = errors.New("bad revision error")
 
-type Storage interface {
+type DataHolder interface {
 	Save(key []byte, data []byte) error
 	Update(key []byte, data []byte, revision int) error
 	Load(key []byte) ([]byte, int, error)
@@ -23,11 +20,11 @@ type Storage interface {
 }
 
 type DataHandler struct {
-	storage Storage
+	holder DataHolder
 }
 
-func NewDataHandler(storage Storage) *DataHandler {
-	return &DataHandler{storage: storage}
+func NewDataHandler(holder DataHolder) *DataHandler {
+	return &DataHandler{holder: holder}
 }
 
 func (h *DataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -64,9 +61,9 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, revision, err := h.storage.Load(req.Key)
+	data, revision, err := h.holder.Load(req.Key)
 	if err != nil {
-		responseStorageError(w, err)
+		responseholderError(w, err)
 		return
 	}
 
@@ -93,8 +90,8 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.storage.Save(req.Key, req.Data); err != nil {
-		responseStorageError(w, err)
+	if err := h.holder.Save(req.Key, req.Data); err != nil {
+		responseholderError(w, err)
 		return
 	}
 
@@ -122,8 +119,8 @@ func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.storage.Update(req.Key, req.Data, req.Revision); err != nil {
-		responseStorageError(w, err)
+	if err := h.holder.Update(req.Key, req.Data, req.Revision); err != nil {
+		responseholderError(w, err)
 		return
 	}
 
@@ -141,16 +138,16 @@ func (h *DataHandler) handleDeleteData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.storage.Delete(req.Key); err != nil {
-		responseStorageError(w, err)
+	if err := h.holder.Delete(req.Key); err != nil {
+		responseholderError(w, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func responseStorageError(w http.ResponseWriter, err error) {
-	zlog.Logger().Infof("Storage err=%s", err)
+func responseholderError(w http.ResponseWriter, err error) {
+	zlog.Logger().Infof("holder err=%s", err)
 
 	if errors.Is(err, ErrBadRevision) {
 		w.WriteHeader(http.StatusConflict)
@@ -161,34 +158,4 @@ func responseStorageError(w http.ResponseWriter, err error) {
 	}
 
 	w.WriteHeader(http.StatusInternalServerError)
-}
-
-func readRequest[T any](r *http.Request) (T, error) {
-	var parsedRequest T
-
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		return parsedRequest, fmt.Errorf("read all err=%w", err)
-	}
-
-	if err := json.Unmarshal(data, &parsedRequest); err != nil {
-		return parsedRequest, fmt.Errorf("unmarshal data=%s err=%w", string(data), err)
-	}
-
-	return parsedRequest, nil
-}
-
-func writeResponse[T any](w http.ResponseWriter, response T) error {
-	data, err := json.Marshal(response)
-	if err != nil {
-		return fmt.Errorf("marshal err=%w", err)
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(data)
-	if err != nil {
-		return fmt.Errorf("write data  err=%w", err)
-	}
-
-	return nil
 }
