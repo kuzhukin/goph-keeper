@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/kuzhukin/goph-keeper/internal/server/config"
 	"github.com/kuzhukin/goph-keeper/internal/server/controller"
 	"github.com/kuzhukin/goph-keeper/internal/server/handler"
+	"github.com/kuzhukin/goph-keeper/internal/server/middleware"
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
 
@@ -39,7 +41,9 @@ func StartNew(config *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("start db controller, err=%w", err)
 	}
 
-	router := http.NewServeMux()
+	router := chi.NewRouter()
+
+	router.Use(middleware.LoggingHTTPHandler)
 
 	router.Handle(loadDataEndpoint, handler.NewDataHandler(controller))
 	router.Handle(registerEndpoint, handler.NewRegistrationHandler(controller))

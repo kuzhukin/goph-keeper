@@ -24,5 +24,5 @@ func ReadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("invalid config, err=%w", err)
 	}
 
-	return &Config{}, nil
+	return config, nil
 }

@@ -1,10 +1,10 @@
 package controller
 
 const (
-	createUsersTableQuery = `CREATE TABLE IF NOT EXIST users (
-		login text NOT NULL,
-		token text NOT NULL,
-		PRIMARY KEY ( login )
+	createUsersTableQuery = `CREATE TABLE IF NOT EXISTS users (
+		"login" text NOT NULL,
+		"token" text NOT NULL,
+		PRIMARY KEY ( "login" )
 	);`
 
 	createUserQuery = `INSERT INTO users (login, token) VALUES ($1, $2);`
@@ -13,12 +13,12 @@ const (
 )
 
 const (
-	createDataTableQuery = `CREATE TABLE IF NOT EXIST data (
-		user_login text NOT NULL,
-		key text NOT NULL,
-		value text NOT NULL,
-		revision int NOT NULL,
-		PRIMARY KEY ( user, key )
+	createDataTableQuery = `CREATE TABLE IF NOT EXISTS data (
+		"user_login"	text	NOT NULL,
+		"key"			text	NOT NULL,
+		"value"			text	NOT NULL,
+		"revision"		int 	NOT NULL,
+		PRIMARY KEY ( "user_login", "key" )
 	);`
 
 	addNewDataQuery  = `INSERT INTO data (user, key, value, revision) VALUES ($1, $2, $3, 1);`

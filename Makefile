@@ -56,3 +56,11 @@ coverage_total: test_with_coverage
 .PHONY: coverage_html
 coverage_html: test_with_coverage
 	${GO} tool cover -html=coverage.out
+
+
+run_server:
+	docker stop gophkeeper-postgres > /dev/null
+	docker rm gophkeeper-postgres > /dev/null
+	docker run -d --name gophkeeper-postgres -p 5431:5432 -e POSTGRES_DB=gophkeeper-db -e POSTGRES_USER=gophkeeper-user -e POSTGRES_PASSWORD=12345 postgres:12-alpine && \
+	sleep 5 && \
+	cmd/server/server -c config.yaml

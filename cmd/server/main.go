@@ -37,6 +37,8 @@ func run() error {
 		return fmt.Errorf("read config, err=%w", err)
 	}
 
+	zlog.Logger().Infof("configPath: %s; config: %+v", *configPath, config)
+
 	srvr, err := server.StartNew(config)
 	if err != nil {
 		return fmt.Errorf("start server err=%w", err)
