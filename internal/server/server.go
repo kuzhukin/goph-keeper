@@ -67,6 +67,8 @@ func (s *Server) start() {
 		err := s.httpServer.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			zlog.Logger().Errorf("server failed with err=%s", err)
+
+			return
 		}
 	}()
 }

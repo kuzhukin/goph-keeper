@@ -14,15 +14,29 @@ const (
 
 const (
 	createDataTableQuery = `CREATE TABLE IF NOT EXISTS data (
-		"user_login"	text	NOT NULL,
+		"user"			text	NOT NULL,
 		"key"			text	NOT NULL,
 		"value"			text	NOT NULL,
-		"revision"		int 	NOT NULL,
-		PRIMARY KEY ( "user_login", "key" )
+		"revision"		bigint 	NOT NULL,
+		PRIMARY KEY ( "user", "key" )
 	);`
 
-	addNewDataQuery  = `INSERT INTO data (user, key, value, revision) VALUES ($1, $2, $3, 1);`
+	// TODO: реализовать проверку наличия зарегистрированного пользователя
+	addNewDataQuery  = `INSERT INTO data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
 	updateDataQuery  = `UPDATE data SET value = $3, revision = revision + 1 WHERE user = $1 AND key = 2;`
-	getRevisionQuery = `SELECT revision FROM data WHERE user = $1 AND key = $2;`
-	getData          = `SELECT value, revision FROM data WHERE user = $1 AND key = $2;`
+	getRevisionQuery = `SELECT value, revision FROM data WHERE user = $1 AND key = $2;`
+	getData          = `SELECT "value", "revision" FROM ыг WHERE user = $1 AND key = $2;`
 )
+
+type query struct {
+	request string
+	args    []interface{}
+}
+
+func prepareNewDataQuery(user, key, value string) *query {
+	return &query{request: addNewDataQuery, args: []interface{}{user, key, value}}
+}
+
+func prepareGetDataQuery(user, key string) *query {
+	return &query{request: getData, args: []interface{}{user, key}}
+}

@@ -1,9 +1,12 @@
 package handler
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 type Registrator interface {
-	Register(user string, password string) error
+	Register(ctx context.Context, user string, password string) error
 }
 
 type RegisterHandler struct {
@@ -21,19 +24,23 @@ type RegistrationRequest struct {
 	Password string `json:"password"`
 }
 
+func (r *RegistrationRequest) Validate() bool {
+	return len(r.User) > 0 && len(r.Password) > 0
+}
+
 func (h *RegisterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	req, err := readRequest[RegistrationRequest](r)
+	req, err := readRequest[*RegistrationRequest](r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if err := h.registrator.Register(req.User, req.Password); err != nil {
+	if err := h.registrator.Register(r.Context(), req.User, req.Password); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 

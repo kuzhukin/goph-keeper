@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -8,23 +9,23 @@ import (
 )
 
 var ErrDataAlreadyExist = errors.New("data alreadt exist")
-var ErrInternalProblem = errors.New("holder internal error")
-var ErrDataNotFound = errors.New("holder doesn't have data")
+var ErrInternalProblem = errors.New("storage internal error")
+var ErrDataNotFound = errors.New("storage doesn't have data")
 var ErrBadRevision = errors.New("bad revision error")
 
-type DataHolder interface {
-	Save(key []byte, data []byte) error
-	Update(key []byte, data []byte, revision int) error
-	Load(key []byte) ([]byte, int, error)
-	Delete(key []byte) error
+type Storage interface {
+	Save(ctx context.Context, user, key string, data string) error
+	Update(ctx context.Context, user, key string, data string, revision uint64) error
+	Load(ctx context.Context, user, key string) (string, uint64, error)
+	Delete(ctx context.Context, user, key string) error
 }
 
 type DataHandler struct {
-	holder DataHolder
+	storage Storage
 }
 
-func NewDataHandler(holder DataHolder) *DataHandler {
-	return &DataHandler{holder: holder}
+func NewDataHandler(storage Storage) *DataHandler {
+	return &DataHandler{storage: storage}
 }
 
 func (h *DataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -45,25 +46,30 @@ func (h *DataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type GetDataRequest struct {
-	Key []byte `json:"key"`
+	User string `json:"user"`
+	Key  string `json:"key"`
+}
+
+func (r *GetDataRequest) Validate() bool {
+	return len(r.User) > 0 && len(r.Key) > 0
 }
 
 type GetDataResponse struct {
-	Key      []byte `json:"key"`
-	Data     []byte `json:"data"`
-	Revision int    `json:"revision"`
+	Key      string `json:"key"`
+	Data     string `json:"data"`
+	Revision uint64 `json:"revision"`
 }
 
 func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) {
-	req, err := readRequest[GetDataRequest](r)
+	req, err := readRequest[*GetDataRequest](r)
 	if err != nil || len(req.Key) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	data, revision, err := h.holder.Load(req.Key)
+	data, revision, err := h.storage.Load(r.Context(), req.User, req.Key)
 	if err != nil {
-		responseholderError(w, err)
+		responsestorageError(w, err)
 		return
 	}
 
@@ -73,25 +79,30 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) {
 		Revision: revision,
 	}
 
-	if err := writeResponse[GetDataResponse](w, response); err != nil {
+	if err := writeResponse(w, response); err != nil {
 		zlog.Logger().Errorf("write response=%+v err=%s", response, err)
 	}
 }
 
 type SaveDataRequest struct {
-	Key  []byte `json:"key"`
-	Data []byte `json:"data"`
+	User string `json:"user"`
+	Key  string `json:"key"`
+	Data string `json:"data"`
+}
+
+func (r *SaveDataRequest) Validate() bool {
+	return len(r.User) > 0 && len(r.Key) > 0 && len(r.Data) > 0
 }
 
 func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) {
-	req, err := readRequest[SaveDataRequest](r)
+	req, err := readRequest[*SaveDataRequest](r)
 	if err != nil || len(req.Key) == 0 || len(req.Data) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if err := h.holder.Save(req.Key, req.Data); err != nil {
-		responseholderError(w, err)
+	if err := h.storage.Save(r.Context(), req.User, req.Key, req.Data); err != nil {
+		responsestorageError(w, err)
 		return
 	}
 
@@ -106,21 +117,32 @@ const (
 )
 
 type UpdateDataRequest struct {
-	Key      []byte         `json:"key"`
-	Data     []byte         `json:"data"`
-	Revision int            `json:"revision"`
+	User     string         `json:"user"`
+	Key      string         `json:"key"`
+	Data     string         `json:"data"`
+	Revision uint64         `json:"revision"`
 	Mode     UpdateDataMode `json:"updateDataMode,omitempty"`
 }
 
+func (r *UpdateDataRequest) Validate() bool {
+	switch r.Mode {
+	case SyncUpdateDataMode, ForceUpdateDataMode:
+	default:
+		r.Mode = SyncUpdateDataMode
+	}
+
+	return len(r.Key) > 0 && len(r.Data) > 0 && r.Revision != 0
+}
+
 func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) {
-	req, err := readRequest[UpdateDataRequest](r)
+	req, err := readRequest[*UpdateDataRequest](r)
 	if err != nil || len(req.Key) == 0 || len(req.Data) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if err := h.holder.Update(req.Key, req.Data, req.Revision); err != nil {
-		responseholderError(w, err)
+	if err := h.storage.Update(r.Context(), req.User, req.Key, req.Data, req.Revision); err != nil {
+		responsestorageError(w, err)
 		return
 	}
 
@@ -128,26 +150,31 @@ func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) {
 }
 
 type DeleteDataRequest struct {
-	Key []byte `json:"key"`
+	User string `json:"user"`
+	Key  string `json:"key"`
+}
+
+func (r *DeleteDataRequest) Validate() bool {
+	return len(r.Key) > 0
 }
 
 func (h *DataHandler) handleDeleteData(w http.ResponseWriter, r *http.Request) {
-	req, err := readRequest[DeleteDataRequest](r)
+	req, err := readRequest[*DeleteDataRequest](r)
 	if err != nil || len(req.Key) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if err := h.holder.Delete(req.Key); err != nil {
-		responseholderError(w, err)
+	if err := h.storage.Delete(r.Context(), req.User, req.Key); err != nil {
+		responsestorageError(w, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func responseholderError(w http.ResponseWriter, err error) {
-	zlog.Logger().Infof("holder err=%s", err)
+func responsestorageError(w http.ResponseWriter, err error) {
+	zlog.Logger().Infof("storage err=%s", err)
 
 	if errors.Is(err, ErrBadRevision) {
 		w.WriteHeader(http.StatusConflict)

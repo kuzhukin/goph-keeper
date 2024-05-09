@@ -2,12 +2,19 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 )
 
-func readRequest[T any](r *http.Request) (T, error) {
+type Validaitable interface {
+	Validate() bool
+}
+
+var ErrIsNotValid = errors.New("is not valid")
+
+func readRequest[T Validaitable](r *http.Request) (T, error) {
 	var parsedRequest T
 
 	data, err := io.ReadAll(r.Body)
@@ -17,6 +24,10 @@ func readRequest[T any](r *http.Request) (T, error) {
 
 	if err := json.Unmarshal(data, &parsedRequest); err != nil {
 		return parsedRequest, fmt.Errorf("unmarshal data=%s err=%w", string(data), err)
+	}
+
+	if !parsedRequest.Validate() {
+		return parsedRequest, ErrIsNotValid
 	}
 
 	return parsedRequest, nil
