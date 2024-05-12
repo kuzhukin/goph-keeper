@@ -18,14 +18,14 @@ import (
 // endpoints
 const (
 	// POST - registrer new user
-	registerEndpoint = "/api/user/register"
+	RegisterEndpoint = "/api/user/register"
 	// POST - auth user
-	authEndpoint = "/api/user/auth"
+	AuthEndpoint = "/api/user/auth"
 	// PUT - load new data to storage
 	// POST - update binary data to storage
 	// GET - get binary data from storage
 	// DELETE - delete item from storage
-	loadDataEndpoint = "/api/data"
+	DataEndpoint = "/api/data"
 )
 
 type Server struct {
@@ -45,9 +45,9 @@ func StartNew(config *config.Config) (*Server, error) {
 
 	router.Use(middleware.LoggingHTTPHandler)
 
-	router.Handle(loadDataEndpoint, handler.NewDataHandler(controller))
-	router.Handle(registerEndpoint, handler.NewRegistrationHandler(controller))
-	router.Handle(authEndpoint, handler.NewAuthenticationHandler(controller))
+	router.Handle(DataEndpoint, handler.NewDataHandler(controller))
+	router.Handle(RegisterEndpoint, handler.NewRegistrationHandler(controller))
+	router.Handle(AuthEndpoint, handler.NewAuthenticationHandler(controller))
 
 	server := &Server{
 		httpServer: http.Server{Addr: config.Hostport, Handler: router},

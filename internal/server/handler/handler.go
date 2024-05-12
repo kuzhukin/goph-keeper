@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
 
 type Validaitable interface {
@@ -21,6 +23,8 @@ func readRequest[T Validaitable](r *http.Request) (T, error) {
 	if err != nil {
 		return parsedRequest, fmt.Errorf("read all err=%w", err)
 	}
+
+	zlog.Logger().Debug("request data: %s", string(data))
 
 	if err := json.Unmarshal(data, &parsedRequest); err != nil {
 		return parsedRequest, fmt.Errorf("unmarshal data=%s err=%w", string(data), err)
@@ -42,6 +46,8 @@ func writeResponse[T any](w http.ResponseWriter, response T) error {
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(data)
 	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+
 		return fmt.Errorf("write data  err=%w", err)
 	}
 
