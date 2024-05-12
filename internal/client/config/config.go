@@ -25,7 +25,18 @@ func ReadConfig(filename string) (*Config, error) {
 		return nil, err
 	}
 
-	return utils.ReadYaml[Config](filepath.Join(dir, configPath, filename))
+	confFilePath := filepath.Join(dir, configPath, filename)
+
+	conf, err := utils.ReadYaml[Config](confFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	if conf.Hostport == "" {
+		conf.Hostport = hostportDefault
+	}
+
+	return conf, nil
 }
 
 func UpdateConfig(filename string, params map[string]string) error {

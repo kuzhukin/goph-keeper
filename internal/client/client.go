@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -23,6 +24,8 @@ type Client struct {
 
 func newClient(config *config.Config) *Client {
 	cl := &Client{
+		userName: config.Login,
+		password: config.Password,
 		hostport: config.Hostport,
 		done:     make(chan error),
 	}
@@ -38,35 +41,91 @@ func (c *Client) CreateFile(filename string) error {
 
 	base64Data := base64.RawStdEncoding.EncodeToString(data)
 
-	return c.send(filename, base64Data)
+	return c.doSaveRequest(filename, base64Data)
 }
 
-func (c *Client) send(filename string, filedata string) error {
+func (c *Client) doSaveRequest(filename string, filedata string) error {
 	saveDataRequest := handler.SaveDataRequest{
 		User: c.userName,
 		Key:  filename,
 		Data: string(filedata),
 	}
 
-	uri := createURI(c.hostport, server.DataEndpoint)
+	uri := makeDataCtrlURI(c.hostport, server.DataEndpoint)
 	headers := map[string]string{
 		"Password": c.password,
 	}
 
-	req, err := makeRequest(uri, headers, saveDataRequest)
+	return request(uri, http.MethodPost, headers, saveDataRequest)
+}
+
+func (c *Client) GetFile(filename string) (*handler.GetDataResponse, error) {
+	uri := makeDataCtrlURI(c.hostport, server.DataEndpoint)
+	headers := map[string]string{
+		"Password": c.password,
+	}
+
+	getDataRequest := &handler.GetDataRequest{
+		User: c.userName,
+		Key:  filename,
+	}
+
+	return requestAndParse[handler.GetDataResponse](uri, http.MethodGet, headers, getDataRequest)
+}
+
+func request(uri string, method string, headers map[string]string, request any) error {
+	req, err := makeRequest(uri, method, headers, request)
 	if err != nil {
 		return err
 	}
 
-	return doRequest(req)
+	resp, err := doRequest(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	return nil
 }
 
-func createURI(hostport string, endpoint string) string {
+func requestAndParse[T any](uri string, method string, headers map[string]string, request any) (*T, error) {
+	req, err := makeRequest(uri, method, headers, request)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := doRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return parseResponse[T](resp)
+}
+
+func parseResponse[T any](resp *http.Response) (*T, error) {
+	bin, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	obj := new(T)
+
+	err = json.Unmarshal(bin, obj)
+	if err != nil {
+		return nil, err
+	}
+
+	return obj, nil
+}
+
+func makeDataCtrlURI(hostport string, endpoint string) string {
 	return hostport + endpoint
 }
 
 func makeRequest(
 	uri string,
+	method string,
 	additionalHeaders map[string]string,
 	msg any,
 ) (*http.Request, error) {
@@ -75,7 +134,7 @@ func makeRequest(
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, uri, bytes.NewReader(data))
+	req, err := http.NewRequest(method, uri, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +154,7 @@ var tryingIntervals []time.Duration = []time.Duration{
 	time.Millisecond * 500,
 }
 
-func doRequest(req *http.Request) error {
+func doRequest(req *http.Request) (*http.Response, error) {
 	maxTryingsNum := len(tryingIntervals)
 
 	var err error
@@ -109,14 +168,9 @@ func doRequest(req *http.Request) error {
 				time.Sleep(tryingIntervals[trying])
 			}
 		} else {
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("request failed with statusCode=%d", resp.StatusCode)
-			}
-
-			return nil
+			return resp, nil
 		}
 	}
 
-	return fmt.Errorf("request error: %w", err)
+	return nil, fmt.Errorf("request error: %w", err)
 }

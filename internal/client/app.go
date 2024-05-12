@@ -82,7 +82,6 @@ func NewApplication() (*Application, error) {
 
 					if len(params) == 0 {
 						cli.ShowAppHelpAndExit(ctx, 1)
-
 					}
 
 					if err = config.UpdateConfig(configFileName, params); err != nil {

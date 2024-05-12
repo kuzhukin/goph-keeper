@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/kuzhukin/goph-keeper/internal/client"
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
@@ -21,7 +23,10 @@ func run() error {
 		return err
 	}
 
-	app.Run()
+	err = app.Run()
+	if err != nil {
+		fmt.Println("failed: ", err)
+	}
 
 	return nil
 }

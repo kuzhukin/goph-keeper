@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,7 +25,7 @@ func ReadYaml[T any](filename string) (*T, error) {
 }
 
 func WriteYaml(path string, data any) error {
-	bin, err := json.Marshal(data)
+	bin, err := yaml.Marshal(data)
 	if err != nil {
 		return err
 	}
@@ -37,10 +36,9 @@ func WriteYaml(path string, data any) error {
 		}
 
 		err = os.Mkdir(filepath.Dir(path), 0700)
-		if err != nil {
+		if err != nil && !os.IsExist(err) {
 			return err
 		}
-
 	}
 
 	return os.WriteFile(path, bin, 0600)
