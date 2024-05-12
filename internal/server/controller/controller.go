@@ -170,7 +170,7 @@ func (c *Controller) makeQueryFunc(ctx context.Context, query *query, timeout ti
 
 		rows, err := c.db.QueryContext(ctxWithTimeout, query.request, query.args...)
 		if err != nil {
-			return nil, fmt.Errorf("query metric, err=%w", err)
+			return nil, fmt.Errorf("do query err=%w", err)
 		}
 
 		return rows, nil

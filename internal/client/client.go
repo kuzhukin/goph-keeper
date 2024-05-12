@@ -70,7 +70,20 @@ func (c *Client) GetFile(filename string) (*handler.GetDataResponse, error) {
 		Key:  filename,
 	}
 
-	return requestAndParse[handler.GetDataResponse](uri, http.MethodGet, headers, getDataRequest)
+	resp, err := requestAndParse[handler.GetDataResponse](uri, http.MethodGet, headers, getDataRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	decodedData, err := base64.RawStdEncoding.DecodeString(resp.Data)
+
+	if err != nil {
+		return nil, err
+	}
+
+	resp.Data = string(decodedData)
+
+	return resp, nil
 }
 
 func request(uri string, method string, headers map[string]string, request any) error {

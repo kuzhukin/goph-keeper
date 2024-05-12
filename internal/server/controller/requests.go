@@ -23,9 +23,9 @@ const (
 
 	// TODO: реализовать проверку наличия зарегистрированного пользователя
 	addNewDataQuery  = `INSERT INTO data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
-	updateDataQuery  = `UPDATE data SET value = $3, revision = revision + 1 WHERE user = $1 AND key = 2;`
-	getRevisionQuery = `SELECT value, revision FROM data WHERE user = $1 AND key = $2;`
-	getData          = `SELECT "value", "revision" FROM ыг WHERE user = $1 AND key = $2;`
+	updateDataQuery  = `UPDATE data SET "value" = $3, revision = revision + 1 WHERE "user" = $1 AND "key" = 2;`
+	getRevisionQuery = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
+	getData          = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
 )
 
 type query struct {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
@@ -110,14 +111,59 @@ func NewApplication() (*Application, error) {
 						cli.ShowAppHelpAndExit(ctx, 1)
 					}
 
-					client := newClient(conf)
-
 					err := client.CreateFile(filename)
 					if err != nil {
 						fmt.Println(err)
 					}
 
 					return err
+				},
+			},
+			{
+				Name:    "get",
+				Aliases: []string{"g"},
+				Usage:   "Download file from server",
+				Before:  initClientFunc,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "file",
+						Aliases: []string{"f"},
+						Usage:   "path to file",
+					},
+					&cli.StringFlag{
+						Name:    "output-dir",
+						Aliases: []string{"o"},
+						Usage:   "Output directory",
+					},
+				},
+				Action: func(ctx *cli.Context) error {
+					filename := ctx.String("file")
+					if len(filename) == 0 {
+						cli.ShowAppHelpAndExit(ctx, 1)
+					}
+
+					resp, err := client.GetFile(filename)
+					if err != nil {
+						fmt.Println(err)
+
+						return err
+					}
+
+					// TODO: Realize metadata saving
+
+					outputDir := ctx.String("output-dir")
+					if len(outputDir) == 0 {
+						outputDir = "."
+					}
+
+					outputFilePath := filepath.Join(outputDir, filename)
+
+					err = os.WriteFile(outputFilePath, []byte(resp.Data), 0600)
+					if err != nil {
+						return err
+					}
+
+					return nil
 				},
 			},
 			{
