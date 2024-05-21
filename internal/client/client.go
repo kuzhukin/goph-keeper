@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
+	"github.com/kuzhukin/goph-keeper/internal/client/storage"
 	"github.com/kuzhukin/goph-keeper/internal/server"
 	"github.com/kuzhukin/goph-keeper/internal/server/handler"
 )
@@ -22,10 +23,10 @@ type Client struct {
 	done     chan error
 }
 
-func newClient(config *config.Config) *Client {
+func newClient(userName string, password string, config *config.Config) *Client {
 	cl := &Client{
-		userName: config.Login,
-		password: config.Password,
+		userName: userName,
+		password: password,
 		hostport: config.Hostport,
 		done:     make(chan error),
 	}
@@ -59,7 +60,7 @@ func (c *Client) doSaveRequest(filename string, filedata string) error {
 	return request(uri, http.MethodPost, headers, saveDataRequest)
 }
 
-func (c *Client) GetFile(filename string) (*handler.GetDataResponse, error) {
+func (c *Client) GetFile(filename string) (*storage.File, error) {
 	uri := makeDataCtrlURI(c.hostport, server.DataEndpoint)
 	headers := map[string]string{
 		"Password": c.password,
@@ -83,7 +84,7 @@ func (c *Client) GetFile(filename string) (*handler.GetDataResponse, error) {
 
 	resp.Data = string(decodedData)
 
-	return resp, nil
+	return &storage.File{Name: filename, Data: string(decodedData), Revision: resp.Revision}, nil
 }
 
 func request(uri string, method string, headers map[string]string, request any) error {

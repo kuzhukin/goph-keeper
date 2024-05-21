@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
+	"github.com/kuzhukin/goph-keeper/internal/client/storage"
 	"github.com/urfave/cli/v2"
 )
 
@@ -22,6 +22,7 @@ func NewApplication() (*Application, error) {
 	var client *Client
 	var conf *config.Config
 	var err error
+	var appStorage storage.Storage
 
 	initClientFunc := func(ctx *cli.Context) error {
 		if ctx.Bool("help") {
@@ -43,7 +44,17 @@ func NewApplication() (*Application, error) {
 			return err
 		}
 
-		client = newClient(conf)
+		appStorage, err = storage.StartNewDbStorage(conf.Database)
+		if err != nil {
+			return nil
+		}
+
+		user, err := appStorage.User()
+		if err != nil {
+			return nil
+		}
+
+		client = newClient(user.Login, user.Password, conf)
 
 		return nil
 	}
@@ -60,16 +71,12 @@ func NewApplication() (*Application, error) {
 				Description: "Add configuration to ~/.goph-keeper/client_config.yaml",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:  "login",
-						Usage: "User's login",
-					},
-					&cli.StringFlag{
-						Name:  "password",
-						Usage: "User's password",
-					},
-					&cli.StringFlag{
 						Name:  "server-url",
 						Usage: "Pair of server's IP:port",
+					},
+					&cli.StringFlag{
+						Name:  "database-name",
+						Usage: "Database's file's name",
 					},
 				},
 				Action: func(ctx *cli.Context) error {
@@ -93,6 +100,24 @@ func NewApplication() (*Application, error) {
 				},
 			},
 			{
+				Name:  "register",
+				Usage: "Registrates user in system",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "login",
+						Usage: "User's login",
+					},
+					&cli.StringFlag{
+						Name:  "password",
+						Usage: "User's password",
+					},
+				},
+				Action: func(ctx *cli.Context) error {
+
+					return nil
+				},
+			},
+			{
 				Name:    "create",
 				Aliases: []string{"c"},
 				Usage:   "Send new file to server",
@@ -106,10 +131,7 @@ func NewApplication() (*Application, error) {
 				Description: "Read file and send it to server",
 				Before:      initClientFunc,
 				Action: func(ctx *cli.Context) error {
-					filename := ctx.String("file")
-					if len(filename) == 0 {
-						cli.ShowAppHelpAndExit(ctx, 1)
-					}
+					filename := getFileArg(ctx)
 
 					err := client.CreateFile(filename)
 					if err != nil {
@@ -137,33 +159,18 @@ func NewApplication() (*Application, error) {
 					},
 				},
 				Action: func(ctx *cli.Context) error {
-					filename := ctx.String("file")
-					if len(filename) == 0 {
-						cli.ShowAppHelpAndExit(ctx, 1)
-					}
+					filename := getFileArg(ctx)
 
-					resp, err := client.GetFile(filename)
+					file, err := client.GetFile(filename)
 					if err != nil {
 						fmt.Println(err)
 
 						return err
 					}
 
-					outputDir := ctx.String("output-dir")
-					if len(outputDir) == 0 {
-						outputDir = "."
-					}
+					outputDir := getOutputDirArg(ctx)
 
-					_ = os.MkdirAll(outputDir, 0700)
-
-					outputFilePath := filepath.Join(outputDir, filename)
-
-					err = os.WriteFile(outputFilePath, []byte(resp.Data), 0600)
-					if err != nil {
-						return err
-					}
-
-					return nil
+					return file.Save(outputDir)
 				},
 			},
 			{
@@ -196,6 +203,21 @@ func NewApplication() (*Application, error) {
 					},
 				},
 			},
+			// // должен запускать текстовый редактор с файлом и изменять ревизию
+			// {
+			// 	Name:  "edit",
+			// 	Usage: "Edit file",
+			// 	Flags: []cli.Flag{
+			// 		&cli.StringFlag{
+			// 			Name:    "file",
+			// 			Aliases: []string{"f"},
+			// 			Usage:   "path to file",
+			// 		},
+			// 	},
+			// 	Action: func(ctx *cli.Context) error {
+
+			// 	},
+			// },
 		},
 	}
 
@@ -208,4 +230,22 @@ func (a *Application) Run() error {
 	}
 
 	return nil
+}
+
+func getFileArg(ctx *cli.Context) string {
+	filename := ctx.String("file")
+	if len(filename) == 0 {
+		cli.ShowAppHelpAndExit(ctx, 1)
+	}
+
+	return filename
+}
+
+func getOutputDirArg(ctx *cli.Context) string {
+	outputDir := ctx.String("output-dir")
+	if len(outputDir) == 0 {
+		outputDir = "."
+	}
+
+	return outputDir
 }
