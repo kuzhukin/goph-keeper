@@ -149,12 +149,12 @@ func NewApplication() (*Application, error) {
 						return err
 					}
 
-					// TODO: Realize metadata saving
-
 					outputDir := ctx.String("output-dir")
 					if len(outputDir) == 0 {
 						outputDir = "."
 					}
+
+					_ = os.MkdirAll(outputDir, 0700)
 
 					outputFilePath := filepath.Join(outputDir, filename)
 

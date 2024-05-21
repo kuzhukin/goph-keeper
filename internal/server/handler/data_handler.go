@@ -72,6 +72,8 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
+	zlog.Logger().Debugf("111 %v", req)
+
 	data, revision, err := h.storage.Load(r.Context(), req.User, req.Key)
 	if err != nil {
 		responsestorageError(w, err)
