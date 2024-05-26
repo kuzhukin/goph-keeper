@@ -25,7 +25,13 @@ const (
 	// POST - update binary data to storage
 	// GET - get binary data from storage
 	// DELETE - delete item from storage
-	DataEndpoint = "/api/data"
+	BinaryDataEndpoint = "/api/data/binary"
+	// PUT, POST, GET, DELETE
+	// Key = Value secret
+	SecretEndpoint = "/api/data/secret"
+	// PUT, POST, GET, DELETE
+	// card data
+	WalletEndpoint = "/api/data/wallet"
 )
 
 type Server struct {
@@ -45,7 +51,7 @@ func StartNew(config *config.Config) (*Server, error) {
 
 	router.Use(middleware.LoggingHTTPHandler)
 
-	router.Handle(DataEndpoint, handler.NewDataHandler(controller))
+	router.Handle(BinaryDataEndpoint, handler.NewDataHandler(controller))
 	router.Handle(RegisterEndpoint, handler.NewRegistrationHandler(controller))
 	router.Handle(AuthEndpoint, handler.NewAuthenticationHandler(controller))
 

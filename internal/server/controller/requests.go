@@ -12,20 +12,25 @@ const (
 	getUserByToken  = `SELECT * FROM users WHERE token = $1;`
 )
 
+func prepareCreateUserQuery(login, password string) *query {
+	return &query{request: createUserQuery, args: []any{login, password}}
+}
+
 const (
-	createDataTableQuery = `CREATE TABLE IF NOT EXISTS data (
+	createBinaryDataTableQuery = `CREATE TABLE IF NOT EXISTS binary_data (
 		"user"			text	NOT NULL,
 		"key"			text	NOT NULL,
 		"value"			text	NOT NULL,
 		"revision"		bigint 	NOT NULL,
+		"metainfo"      text,
 		PRIMARY KEY ( "user", "key" )
 	);`
 
 	// TODO: реализовать проверку наличия зарегистрированного пользователя
-	addNewDataQuery  = `INSERT INTO data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
-	updateDataQuery  = `UPDATE data SET "value" = $3, revision = revision + 1 WHERE "user" = $1 AND "key" = 2;`
-	getRevisionQuery = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
-	getData          = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
+	addNewBinaryDataQuery      = `INSERT INTO binary_data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
+	updateBinaryDataQuery      = `UPDATE binary_data SET "value" = $3, revision = revision + 1 WHERE "user" = $1 AND "key" = 2;`
+	getBinaryDataRevisionQuery = `SELECT "value", "revision" FROM binary_data WHERE "user" = $1 AND "key" = $2;`
+	getBinaryData              = `SELECT "value", "revision" FROM binary_data WHERE "user" = $1 AND "key" = $2;`
 )
 
 type query struct {
@@ -34,9 +39,9 @@ type query struct {
 }
 
 func prepareNewDataQuery(user, key, value string) *query {
-	return &query{request: addNewDataQuery, args: []interface{}{user, key, value}}
+	return &query{request: addNewBinaryDataQuery, args: []interface{}{user, key, value}}
 }
 
 func prepareGetDataQuery(user, key string) *query {
-	return &query{request: getData, args: []interface{}{user, key}}
+	return &query{request: getBinaryData, args: []interface{}{user, key}}
 }

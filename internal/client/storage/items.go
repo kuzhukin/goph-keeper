@@ -35,4 +35,5 @@ func (f *File) Edit() error {
 type User struct {
 	Login    string
 	Password string
+	IsActive bool
 }

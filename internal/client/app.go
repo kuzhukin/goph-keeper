@@ -14,214 +14,271 @@ import (
 const configFileName = "client_config.yaml"
 
 type Application struct {
-	cli    cli.App
-	client *Client
+	cli     cli.App
+	client  *Client
+	storage storage.Storage
+	config  *config.Config
 }
 
 func NewApplication() (*Application, error) {
-	var client *Client
-	var conf *config.Config
-	var err error
-	var appStorage storage.Storage
+	app := &Application{}
 
-	initClientFunc := func(ctx *cli.Context) error {
-		if ctx.Bool("help") {
-			cli.ShowAppHelpAndExit(ctx, 0)
+	conf, err := config.ReadConfig(configFileName)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Println("Use config command for authentification. See gophkeep-client config --help")
+		} else {
+			fmt.Printf("Unknown error: %s\n", err)
+
+			return nil, err
 		}
-
-		if ctx.Command.Name == "config" {
-			return nil
-		}
-
-		conf, err = config.ReadConfig(configFileName)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				fmt.Println("Use config command for authentification. See gophkeep-client config --help")
-			} else {
-				fmt.Printf("Unknown error: %s\n", err)
-			}
-
-			return err
-		}
-
-		appStorage, err = storage.StartNewDbStorage(conf.Database)
-		if err != nil {
-			return nil
-		}
-
-		user, err := appStorage.User()
-		if err != nil {
-			return nil
-		}
-
-		client = newClient(user.Login, user.Password, conf)
-
-		return nil
 	}
 
-	cli := cli.App{
+	app.initCLI()
+
+	if conf != nil {
+		app.config = conf
+
+		app.storage, err = storage.StartNewDbStorage(conf.Database)
+		if err != nil {
+			return nil, err
+		}
+
+		user, err := app.storage.User()
+		if err != nil {
+			if errors.Is(err, storage.ErrNotActiveOrRegistredUsers) {
+				fmt.Println("2222")
+
+				return app, nil
+			}
+
+			return nil, err
+		}
+
+		app.client = newClient(user.Login, user.Password, conf)
+
+	}
+
+	return app, nil
+}
+
+func (a *Application) initCLI() {
+	a.cli = cli.App{
 		Name:     "gophkeep",
 		Version:  "v1.0.0",
 		Compiled: time.Now(),
 		Usage:    "Use for send your data to gokeep server",
 		Commands: []*cli.Command{
-			{
-				Name:        "config",
-				Usage:       "Client configuration",
-				Description: "Add configuration to ~/.goph-keeper/client_config.yaml",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "server-url",
-						Usage: "Pair of server's IP:port",
-					},
-					&cli.StringFlag{
-						Name:  "database-name",
-						Usage: "Database's file's name",
-					},
-				},
-				Action: func(ctx *cli.Context) error {
-					params := map[string]string{}
-					for _, flag := range ctx.FlagNames() {
-						value := ctx.String(flag)
-						if len(value) != 0 {
-							params[flag] = value
-						}
-					}
-
-					if len(params) == 0 {
-						cli.ShowAppHelpAndExit(ctx, 1)
-					}
-
-					if err = config.UpdateConfig(configFileName, params); err != nil {
-						fmt.Printf("update config error: %s\n", err)
-					}
-
-					return err
-				},
-			},
-			{
-				Name:  "register",
-				Usage: "Registrates user in system",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "login",
-						Usage: "User's login",
-					},
-					&cli.StringFlag{
-						Name:  "password",
-						Usage: "User's password",
-					},
-				},
-				Action: func(ctx *cli.Context) error {
-
-					return nil
-				},
-			},
-			{
-				Name:    "create",
-				Aliases: []string{"c"},
-				Usage:   "Send new file to server",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "file",
-						Aliases: []string{"f"},
-						Usage:   "Path of creating file",
-					},
-				},
-				Description: "Read file and send it to server",
-				Before:      initClientFunc,
-				Action: func(ctx *cli.Context) error {
-					filename := getFileArg(ctx)
-
-					err := client.CreateFile(filename)
-					if err != nil {
-						fmt.Println(err)
-					}
-
-					return err
-				},
-			},
-			{
-				Name:    "get",
-				Aliases: []string{"g"},
-				Usage:   "Download file from server",
-				Before:  initClientFunc,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "file",
-						Aliases: []string{"f"},
-						Usage:   "path to file",
-					},
-					&cli.StringFlag{
-						Name:    "output-dir",
-						Aliases: []string{"o"},
-						Usage:   "Output directory",
-					},
-				},
-				Action: func(ctx *cli.Context) error {
-					filename := getFileArg(ctx)
-
-					file, err := client.GetFile(filename)
-					if err != nil {
-						fmt.Println(err)
-
-						return err
-					}
-
-					outputDir := getOutputDirArg(ctx)
-
-					return file.Save(outputDir)
-				},
-			},
-			{
-				Name:    "update",
-				Aliases: []string{"u"},
-				Usage:   "Update existed file on server",
-				Before:  initClientFunc,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "file",
-						Aliases: []string{"f"},
-						Usage:   "path to file",
-					},
-					&cli.BoolFlag{
-						Name:  "force",
-						Usage: "rewrite file on the server",
-					},
-				},
-			},
-			{
-				Name:    "delete",
-				Aliases: []string{"d"},
-				Usage:   "Delete file on server",
-				Before:  initClientFunc,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "file",
-						Aliases: []string{"f"},
-						Usage:   "path to file",
-					},
-				},
-			},
-			// // должен запускать текстовый редактор с файлом и изменять ревизию
-			// {
-			// 	Name:  "edit",
-			// 	Usage: "Edit file",
-			// 	Flags: []cli.Flag{
-			// 		&cli.StringFlag{
-			// 			Name:    "file",
-			// 			Aliases: []string{"f"},
-			// 			Usage:   "path to file",
-			// 		},
-			// 	},
-			// 	Action: func(ctx *cli.Context) error {
-
-			// 	},
-			// },
+			a.makeConfigCmd(),
+			a.makeRegisterCmd(),
+			a.makeCreateFileCmd(),
+			a.makeGetFileCmd(),
+			a.makeUpdateFileCmd(),
+			a.makeDeleteFileCmd(),
 		},
 	}
+}
 
-	return &Application{cli: cli, client: client}, nil
+func (a *Application) makeConfigCmd() *cli.Command {
+	return &cli.Command{
+		Name:        "config",
+		Usage:       "Client configuration",
+		Description: "Add configuration to ~/.goph-keeper/client_config.yaml",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "server-url",
+				Usage: "Pair of server's IP:port",
+			},
+			&cli.StringFlag{
+				Name:  "database-name",
+				Usage: "Database's file's name",
+			},
+		},
+		Before: a.checkConfig,
+		Action: func(ctx *cli.Context) error {
+			params := map[string]string{}
+			for _, flag := range ctx.FlagNames() {
+				value := ctx.String(flag)
+				if len(value) != 0 {
+					params[flag] = value
+				}
+			}
+
+			if len(params) == 0 {
+				cli.ShowAppHelpAndExit(ctx, 1)
+			}
+
+			err := config.UpdateConfig(configFileName, params)
+			if err != nil {
+				fmt.Printf("update config error: %s\n", err)
+			}
+
+			return err
+		},
+	}
+}
+
+func (a *Application) makeRegisterCmd() *cli.Command {
+	return &cli.Command{
+		Name:        "register",
+		Usage:       "Registrates user in system",
+		Description: "You shoud register before using application",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "login",
+				Usage: "User's login",
+			},
+			&cli.StringFlag{
+				Name:  "password",
+				Usage: "User's password",
+			},
+		},
+		Action: func(ctx *cli.Context) error {
+			login := getLoginArg(ctx)
+			password := getPasswordArg(ctx)
+
+			err := a.storage.Register(login, password)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+}
+
+func (a *Application) makeCreateFileCmd() *cli.Command {
+	return &cli.Command{
+		Name:    "create",
+		Aliases: []string{"c"},
+		Usage:   "Send new file to server",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "Path of creating file",
+			},
+		},
+		Description: "Read file and send it to server",
+		Before:      a.checkConfig,
+		Action: func(ctx *cli.Context) error {
+			filename := getFileArg(ctx)
+
+			err := a.client.CreateFile(filename)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			return err
+		},
+	}
+}
+
+func (a *Application) makeGetFileCmd() *cli.Command {
+	return &cli.Command{
+		Name:    "get",
+		Aliases: []string{"g"},
+		Usage:   "Download file from server",
+		Before:  a.checkConfig,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path to file",
+			},
+			&cli.StringFlag{
+				Name:    "output-dir",
+				Aliases: []string{"o"},
+				Usage:   "Output directory",
+			},
+		},
+		Action: func(ctx *cli.Context) error {
+			filename := getFileArg(ctx)
+
+			file, err := a.client.GetFile(filename)
+			if err != nil {
+				fmt.Println(err)
+
+				return err
+			}
+
+			outputDir := getOutputDirArg(ctx)
+
+			return file.Save(outputDir)
+		},
+	}
+}
+
+func (a *Application) makeUpdateFileCmd() *cli.Command {
+	return &cli.Command{
+		Name:    "update",
+		Aliases: []string{"u"},
+		Usage:   "Update existed file on server",
+		Before:  a.checkConfig,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path to file",
+			},
+			&cli.BoolFlag{
+				Name:  "force",
+				Usage: "rewrite file on the server",
+			},
+		},
+	}
+}
+
+func (a *Application) makeDeleteFileCmd() *cli.Command {
+	return &cli.Command{
+		Name:    "delete",
+		Aliases: []string{"d"},
+		Usage:   "Delete file on server",
+		Before:  a.checkConfig,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "file",
+				Aliases: []string{"f"},
+				Usage:   "path to file",
+			},
+		},
+	}
+}
+
+// func (a *Application) makeEditFileCmd() *cli.Command {
+// 	return &cli.Command{
+// 		// TODO: должен запускать текстовый редактор с файлом и изменять ревизию
+// 		// {
+// 		// 	Name:  "edit",
+// 		// 	Usage: "Edit file",
+// 		// 	Flags: []cli.Flag{
+// 		// 		&cli.StringFlag{
+// 		// 			Name:    "file",
+// 		// 			Aliases: []string{"f"},
+// 		// 			Usage:   "path to file",
+// 		// 		},
+// 		// 	},
+// 		// 	Action: func(ctx *cli.Context) error {
+
+// 		// 	},
+// 		// },
+// 	}
+// }
+
+func (a *Application) checkConfig(ctx *cli.Context) error {
+	if a.config == nil {
+		fmt.Println("client isn't configured")
+
+		cli.ShowAppHelpAndExit(ctx, 1)
+	}
+
+	if a.client == nil {
+		fmt.Println("don't have active users")
+
+		cli.ShowAppHelpAndExit(ctx, 1)
+	}
+
+	return nil
 }
 
 func (a *Application) Run() error {
@@ -239,6 +296,24 @@ func getFileArg(ctx *cli.Context) string {
 	}
 
 	return filename
+}
+
+func getLoginArg(ctx *cli.Context) string {
+	value := ctx.String("login")
+	if len(value) == 0 {
+		cli.ShowAppHelpAndExit(ctx, 1)
+	}
+
+	return value
+}
+
+func getPasswordArg(ctx *cli.Context) string {
+	value := ctx.String("password")
+	if len(value) == 0 {
+		cli.ShowAppHelpAndExit(ctx, 1)
+	}
+
+	return value
 }
 
 func getOutputDirArg(ctx *cli.Context) string {

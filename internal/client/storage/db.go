@@ -3,6 +3,13 @@ package storage
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/kuzhukin/goph-keeper/internal/client/config"
+	"github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -24,19 +31,96 @@ type DbStorage struct {
 }
 
 func StartNewDbStorage(dbName string) (*DbStorage, error) {
-	db, err := sql.Open("sqlite", dbName)
+	homedir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
 
-	return &DbStorage{db: db}, nil
+	dbPath := filepath.Join(homedir, config.DefaultAppDirName, dbName)
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	storage := &DbStorage{db: db}
+
+	if err = storage.initTables(); err != nil {
+		return nil, err
+	}
+
+	return storage, nil
 }
 
-func (s *DbStorage) Register(login string, password string) error {
+func (s *DbStorage) initTables() error {
+	var err error
+
+	for _, t := range []string{
+		createDataTableQuery,
+		createUserTableQuery,
+	} {
+		if _, err = s.db.Exec(t); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
+
+const (
+	ACTIVE  = 1
+	PASSIVE = 0
+)
+
+func (s *DbStorage) Register(login string, password string) error {
+	query := prepareInsertUserQuery(login, password)
+
+	_, err := s.db.Exec(query.request, query.args...)
+	if err != nil {
+		if sqliteErr, ok := err.(sqlite3.Error); ok {
+			if errors.Is(sqliteErr.Code, sqlite3.ErrNo(sqlite3.ErrConstraintUnique)) {
+				return err
+			}
+		}
+	}
+
+	fmt.Println("User was registred. Context was switched to a new user.")
+
+	return nil
+}
+
+func (s *DbStorage) changeCurrentUserStatus(login string) error {
+	// TODO: сделать текущего активного пользователя пассивным
+
+	return nil
+}
+
+var ErrNotActiveOrRegistredUsers = errors.New("don't have active or registred users")
+
 func (s *DbStorage) User() (*User, error) {
-	return nil, nil
+	query := prepareGetUserQuery()
+
+	rows, err := s.db.Query(query.request)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, ErrNotActiveOrRegistredUsers
+	}
+
+	user := &User{IsActive: true}
+	err = rows.Scan(&user.Login, &user.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 func (s *DbStorage) Save(f *File) error {
 	return nil

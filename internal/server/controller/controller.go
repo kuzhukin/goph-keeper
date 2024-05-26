@@ -50,7 +50,7 @@ func (c *Controller) Stop() error {
 
 func (c *Controller) init() error {
 	createTableQueries := []string{
-		createDataTableQuery,
+		createBinaryDataTableQuery,
 		createUsersTableQuery,
 	}
 
@@ -78,8 +78,11 @@ func (c *Controller) exec(query string) error {
 }
 
 func (c *Controller) Save(ctx context.Context, user, key, data string) error {
-	executor := c.makeExecFunc(ctx, prepareNewDataQuery(user, key, data), time.Second*5)
-	_, err := doQuery(executor)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	executor := c.makeExecFunc(prepareNewDataQuery(user, key, data))
+	_, err := doQuery(ctxWithTimeout, executor)
 	if err != nil {
 		if isNotUniqueError(err) {
 			return ErrDataAlreadyExist
@@ -96,8 +99,11 @@ func (c *Controller) Update(ctx context.Context, user, key, data string, revisio
 }
 
 func (c *Controller) Load(ctx context.Context, user, key string) (string, uint64, error) {
-	executor := c.makeQueryFunc(ctx, prepareGetDataQuery(user, key), time.Second*5)
-	rows, err := doQuery(executor)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	executor := c.makeQueryFunc(prepareGetDataQuery(user, key))
+	rows, err := doQuery(ctxWithTimeout, executor)
 	if err != nil {
 		return "", 0, fmt.Errorf("do query, err=%w", err)
 	}
@@ -125,7 +131,14 @@ func (c *Controller) Delete(ctx context.Context, user, key string) error {
 }
 
 func (c *Controller) Register(ctx context.Context, user string, password string) error {
-	return nil
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	execFn := c.makeExecFunc(prepareCreateUserQuery(user, password))
+
+	_, err := doQuery(ctxWithTimeout, execFn)
+
+	return err
 }
 
 func (c *Controller) Authenticate(ctx context.Context, user string, password string) error {
@@ -149,12 +162,9 @@ func scanRow(rows *sql.Rows, dest ...any) error {
 	return rows.Err()
 }
 
-func (c *Controller) makeExecFunc(ctx context.Context, query *query, timeout time.Duration) func() (*sql.Result, error) {
-	return func() (r *sql.Result, err error) {
-		ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-
-		res, err := c.db.ExecContext(ctxWithTimeout, query.request, query.args...)
+func (c *Controller) makeExecFunc(query *query) func(context.Context) (*sql.Result, error) {
+	return func(ctx context.Context) (r *sql.Result, err error) {
+		res, err := c.db.ExecContext(ctx, query.request, query.args...)
 		if err != nil {
 			return nil, fmt.Errorf("exec query=%v err=%w", query, err)
 		}
@@ -163,12 +173,9 @@ func (c *Controller) makeExecFunc(ctx context.Context, query *query, timeout tim
 	}
 }
 
-func (c *Controller) makeQueryFunc(ctx context.Context, query *query, timeout time.Duration) func() (*sql.Rows, error) {
-	return func() (*sql.Rows, error) {
-		ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-
-		rows, err := c.db.QueryContext(ctxWithTimeout, query.request, query.args...)
+func (c *Controller) makeQueryFunc(query *query) func(context.Context) (*sql.Rows, error) {
+	return func(ctx context.Context) (*sql.Rows, error) {
+		rows, err := c.db.QueryContext(ctx, query.request, query.args...)
 		if err != nil {
 			return nil, fmt.Errorf("do query err=%w", err)
 		}
@@ -183,12 +190,12 @@ var tryingIntervals = []time.Duration{
 	time.Millisecond * 500,
 }
 
-func doQuery[T any](queryFunc func() (*T, error)) (*T, error) {
+func doQuery[T any](ctx context.Context, queryFunc func(context.Context) (*T, error)) (*T, error) {
 	var commonErr error
 	max := len(tryingIntervals)
 
 	for trying := 0; trying <= max; trying++ {
-		rows, err := queryFunc()
+		rows, err := queryFunc(ctx)
 		if err != nil {
 			commonErr = errors.Join(commonErr, err)
 

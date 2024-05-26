@@ -52,7 +52,7 @@ func (c *Client) doSaveRequest(filename string, filedata string) error {
 		Data: string(filedata),
 	}
 
-	uri := makeDataCtrlURI(c.hostport, server.DataEndpoint)
+	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
 	headers := map[string]string{
 		"Password": c.password,
 	}
@@ -61,7 +61,7 @@ func (c *Client) doSaveRequest(filename string, filedata string) error {
 }
 
 func (c *Client) GetFile(filename string) (*storage.File, error) {
-	uri := makeDataCtrlURI(c.hostport, server.DataEndpoint)
+	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
 	headers := map[string]string{
 		"Password": c.password,
 	}
@@ -85,6 +85,19 @@ func (c *Client) GetFile(filename string) (*storage.File, error) {
 	resp.Data = string(decodedData)
 
 	return &storage.File{Name: filename, Data: string(decodedData), Revision: resp.Revision}, nil
+}
+
+func (c *Client) Register(login, password string) error {
+	uri := makeURI(c.hostport, server.RegisterEndpoint)
+
+	// TODO: adding password encrypting
+
+	regstrationRequest := &handler.RegistrationRequest{
+		User:     login,
+		Password: password,
+	}
+
+	return request(uri, http.MethodPut, map[string]string{}, regstrationRequest)
 }
 
 func request(uri string, method string, headers map[string]string, request any) error {
@@ -133,7 +146,7 @@ func parseResponse[T any](resp *http.Response) (*T, error) {
 	return obj, nil
 }
 
-func makeDataCtrlURI(hostport string, endpoint string) string {
+func makeURI(hostport string, endpoint string) string {
 	return hostport + endpoint
 }
 
