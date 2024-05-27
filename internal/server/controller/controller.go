@@ -130,15 +130,65 @@ func (c *Controller) Delete(ctx context.Context, user, key string) error {
 	return nil
 }
 
-func (c *Controller) Register(ctx context.Context, user string, password string) error {
+var ErrUserIsNotExist = errors.New("user isn't exist")
+var ErrWrongUserPassword = errors.New("wrong user's password")
+
+// Register new user
+// return:
+// * nil - user registred successfully
+// * ErrUserAlreadyRegistred - user with password already registred
+// * ErrPasswordConflict - user registred with other password
+// * otherErr - internal
+func (c *Controller) Register(ctx context.Context, login string, password string) error {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	execFn := c.makeExecFunc(prepareCreateUserQuery(user, password))
+	tx, err := c.db.BeginTx(ctxWithTimeout, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := recover()
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
 
-	_, err := doQuery(ctxWithTimeout, execFn)
+	query := prepareGetUserQuery(login)
 
-	return err
+	user, err := doTransactionQuery(ctxWithTimeout, tx, query, func(rows *sql.Rows) (*userInfo, error) {
+		if !rows.Next() {
+			return nil, ErrUserIsNotExist
+		}
+
+		user := &userInfo{}
+		if err := rows.Scan(&user.login, &user.password); err != nil {
+			return nil, err
+		}
+
+		return user, nil
+	})
+	if err == nil {
+		if user.password != password {
+			return ErrWrongUserPassword
+		}
+
+		return nil
+	}
+
+	if !errors.Is(err, ErrUserIsNotExist) {
+		return err
+	}
+
+	query = prepareCreateUserQuery(login, password)
+
+	err = doTransactionExec(ctxWithTimeout, tx, query)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+
 }
 
 func (c *Controller) Authenticate(ctx context.Context, user string, password string) error {
@@ -223,6 +273,12 @@ func isNotUniqueError(err error) bool {
 	var pgErr *pgconn.PgError
 
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
+}
+
+func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) error {
+	_, err := tx.ExecContext(ctx, query.request, query.args...)
+
+	return err
 }
 
 func doTransactionQuery[T any](ctx context.Context, tx *sql.Tx, query *query, parseFun func(rows *sql.Rows) (T, error)) (T, error) {

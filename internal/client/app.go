@@ -1,6 +1,8 @@
 package client
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -47,8 +49,6 @@ func NewApplication() (*Application, error) {
 		user, err := app.storage.User()
 		if err != nil {
 			if errors.Is(err, storage.ErrNotActiveOrRegistredUsers) {
-				fmt.Println("2222")
-
 				return app, nil
 			}
 
@@ -136,8 +136,14 @@ func (a *Application) makeRegisterCmd() *cli.Command {
 		Action: func(ctx *cli.Context) error {
 			login := getLoginArg(ctx)
 			password := getPasswordArg(ctx)
+			encryptedPassword := encodePassword(password)
 
-			err := a.storage.Register(login, password)
+			err := a.storage.Register(login, encryptedPassword)
+			if err != nil {
+				return err
+			}
+
+			err = a.client.Register(login, encryptedPassword)
 			if err != nil {
 				return err
 			}
@@ -145,6 +151,13 @@ func (a *Application) makeRegisterCmd() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func encodePassword(password string) string {
+	h := sha256.New()
+	h.Write([]byte(password))
+
+	return base64.RawStdEncoding.EncodeToString(h.Sum(nil))
 }
 
 func (a *Application) makeCreateFileCmd() *cli.Command {
@@ -273,9 +286,8 @@ func (a *Application) checkConfig(ctx *cli.Context) error {
 	}
 
 	if a.client == nil {
-		fmt.Println("don't have active users")
-
-		cli.ShowAppHelpAndExit(ctx, 1)
+		fmt.Println("Need register before using goph-keeper client. Use --help for more information.")
+		cli.ShowCommandHelpAndExit(ctx, "register", 1)
 	}
 
 	return nil

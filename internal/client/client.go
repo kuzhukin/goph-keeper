@@ -90,8 +90,6 @@ func (c *Client) GetFile(filename string) (*storage.File, error) {
 func (c *Client) Register(login, password string) error {
 	uri := makeURI(c.hostport, server.RegisterEndpoint)
 
-	// TODO: adding password encrypting
-
 	regstrationRequest := &handler.RegistrationRequest{
 		User:     login,
 		Password: password,

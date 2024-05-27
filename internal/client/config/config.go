@@ -11,7 +11,7 @@ import (
 const (
 	DefaultAppDirName = ".goph-keeper"
 	hostportDefault   = "http://localhost:34555"
-	dbDefault         = "default.db"
+	dbDefault         = "goph-keeper.db"
 )
 
 type Config struct {
@@ -29,6 +29,13 @@ func ReadConfig(filename string) (*Config, error) {
 
 	conf, err := utils.ReadYaml[Config](confFilePath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// write default config
+			conf = defaultConfig()
+
+			return conf, utils.WriteYaml(confFilePath, conf)
+		}
+
 		return nil, err
 	}
 
@@ -54,7 +61,7 @@ func UpdateConfig(filename string, params map[string]string) error {
 	config, err := ReadConfig(fullPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			config = &Config{Hostport: hostportDefault}
+			config = defaultConfig()
 		} else {
 			return err
 		}
@@ -69,4 +76,11 @@ func UpdateConfig(filename string, params map[string]string) error {
 	}
 
 	return utils.WriteYaml(fullPath, config)
+}
+
+func defaultConfig() *Config {
+	return &Config{
+		Hostport: hostportDefault,
+		Database: dbDefault,
+	}
 }
