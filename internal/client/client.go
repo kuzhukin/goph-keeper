@@ -17,24 +17,18 @@ import (
 )
 
 type Client struct {
-	userName string
-	password string
 	hostport string
 	done     chan error
 }
 
-func newClient(userName string, password string, config *config.Config) *Client {
-	cl := &Client{
-		userName: userName,
-		password: password,
+func newClient(config *config.Config) *Client {
+	return &Client{
 		hostport: config.Hostport,
 		done:     make(chan error),
 	}
-
-	return cl
 }
 
-func (c *Client) CreateFile(filename string) error {
+func (c *Client) CreateFile(username, password, filename string) error {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return err
@@ -42,32 +36,32 @@ func (c *Client) CreateFile(filename string) error {
 
 	base64Data := base64.RawStdEncoding.EncodeToString(data)
 
-	return c.doSaveRequest(filename, base64Data)
+	return c.doSaveRequest(username, password, filename, base64Data)
 }
 
-func (c *Client) doSaveRequest(filename string, filedata string) error {
+func (c *Client) doSaveRequest(username string, password string, filename string, filedata string) error {
 	saveDataRequest := handler.SaveDataRequest{
-		User: c.userName,
+		User: username,
 		Key:  filename,
 		Data: string(filedata),
 	}
 
 	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
 	headers := map[string]string{
-		"Password": c.password,
+		"Password": password,
 	}
 
 	return request(uri, http.MethodPost, headers, saveDataRequest)
 }
 
-func (c *Client) GetFile(filename string) (*storage.File, error) {
+func (c *Client) GetFile(username string, password string, filename string) (*storage.File, error) {
 	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
 	headers := map[string]string{
-		"Password": c.password,
+		"Password": password,
 	}
 
 	getDataRequest := &handler.GetDataRequest{
-		User: c.userName,
+		User: username,
 		Key:  filename,
 	}
 

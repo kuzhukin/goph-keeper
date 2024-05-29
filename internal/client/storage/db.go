@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -19,7 +20,7 @@ var (
 )
 
 type Storage interface {
-	Register(login string, password string) error
+	Register(login string, password string, cryptokey string) error
 	User() (*User, error)
 	Save(f *File) error
 	Load(name string) (*File, error)
@@ -60,6 +61,8 @@ func (s *DbStorage) initTables() error {
 		createUserTableQuery,
 	} {
 		if _, err = s.db.Exec(t); err != nil {
+			fmt.Println("init table", t)
+
 			return err
 		}
 	}
@@ -72,16 +75,22 @@ const (
 	PASSIVE = 0
 )
 
-func (s *DbStorage) Register(login string, password string) error {
-	query := prepareInsertUserQuery(login, password)
+func (s *DbStorage) Register(login string, password string, cryptoKey string) error {
+	cryptoKeyBase64 := base64.RawStdEncoding.EncodeToString([]byte(cryptoKey))
+
+	query := prepareInsertUserQuery(login, password, cryptoKeyBase64)
 
 	_, err := s.db.Exec(query.request, query.args...)
 	if err != nil {
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
 			if errors.Is(sqliteErr.Code, sqlite3.ErrNo(sqlite3.ErrConstraintUnique)) {
-				return err
+				fmt.Println("User alreay registred in client")
+
+				return nil
 			}
 		}
+
+		return err
 	}
 
 	fmt.Println("User was registred. Context was switched to a new user.")

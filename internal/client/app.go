@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -18,6 +19,7 @@ const configFileName = "client_config.yaml"
 type Application struct {
 	cli     cli.App
 	client  *Client
+	user    *storage.User
 	storage storage.Storage
 	config  *config.Config
 }
@@ -29,6 +31,8 @@ func NewApplication() (*Application, error) {
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Println("Use config command for authentification. See gophkeep-client config --help")
+
+			return nil, err
 		} else {
 			fmt.Printf("Unknown error: %s\n", err)
 
@@ -47,16 +51,12 @@ func NewApplication() (*Application, error) {
 		}
 
 		user, err := app.storage.User()
-		if err != nil {
-			if errors.Is(err, storage.ErrNotActiveOrRegistredUsers) {
-				return app, nil
-			}
-
+		if err != nil && !errors.Is(err, storage.ErrNotActiveOrRegistredUsers) {
 			return nil, err
 		}
 
-		app.client = newClient(user.Login, user.Password, conf)
-
+		app.user = user
+		app.client = newClient(conf)
 	}
 
 	return app, nil
@@ -95,27 +95,29 @@ func (a *Application) makeConfigCmd() *cli.Command {
 			},
 		},
 		Before: a.checkConfig,
-		Action: func(ctx *cli.Context) error {
-			params := map[string]string{}
-			for _, flag := range ctx.FlagNames() {
-				value := ctx.String(flag)
-				if len(value) != 0 {
-					params[flag] = value
-				}
-			}
-
-			if len(params) == 0 {
-				cli.ShowAppHelpAndExit(ctx, 1)
-			}
-
-			err := config.UpdateConfig(configFileName, params)
-			if err != nil {
-				fmt.Printf("update config error: %s\n", err)
-			}
-
-			return err
-		},
+		Action: a.configCmdHandler,
 	}
+}
+
+func (a *Application) configCmdHandler(ctx *cli.Context) error {
+	params := map[string]string{}
+	for _, flag := range ctx.FlagNames() {
+		value := ctx.String(flag)
+		if len(value) != 0 {
+			params[flag] = value
+		}
+	}
+
+	if len(params) == 0 {
+		cli.ShowAppHelpAndExit(ctx, 1)
+	}
+
+	err := config.UpdateConfig(configFileName, params)
+	if err != nil {
+		fmt.Printf("update config error: %s\n", err)
+	}
+
+	return err
 }
 
 func (a *Application) makeRegisterCmd() *cli.Command {
@@ -133,24 +135,33 @@ func (a *Application) makeRegisterCmd() *cli.Command {
 				Usage: "User's password",
 			},
 		},
-		Action: func(ctx *cli.Context) error {
-			login := getLoginArg(ctx)
-			password := getPasswordArg(ctx)
-			encryptedPassword := encodePassword(password)
-
-			err := a.storage.Register(login, encryptedPassword)
-			if err != nil {
-				return err
-			}
-
-			err = a.client.Register(login, encryptedPassword)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		},
+		Action: a.registerCmdHandler,
 	}
+}
+
+func (a *Application) registerCmdHandler(ctx *cli.Context) error {
+	login := getLoginArg(ctx)
+	password := getPasswordArg(ctx)
+	encryptedPassword := encodePassword(password)
+
+	cryptoKey, err := generateKey()
+	if err != nil {
+		return nil
+	}
+
+	cryptoKeyStr := string(cryptoKey)
+
+	err = a.storage.Register(login, encryptedPassword, cryptoKeyStr)
+	if err != nil {
+		return err
+	}
+
+	err = a.client.Register(login, encryptedPassword)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func encodePassword(password string) string {
@@ -174,17 +185,19 @@ func (a *Application) makeCreateFileCmd() *cli.Command {
 		},
 		Description: "Read file and send it to server",
 		Before:      a.checkConfig,
-		Action: func(ctx *cli.Context) error {
-			filename := getFileArg(ctx)
-
-			err := a.client.CreateFile(filename)
-			if err != nil {
-				fmt.Println(err)
-			}
-
-			return err
-		},
+		Action:      a.createFileCmdHander,
 	}
+}
+
+func (a *Application) createFileCmdHander(ctx *cli.Context) error {
+	filename := getFileArg(ctx)
+
+	err := a.client.CreateFile(a.user.Login, a.user.Password, filename)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	return err
 }
 
 func (a *Application) makeGetFileCmd() *cli.Command {
@@ -205,21 +218,23 @@ func (a *Application) makeGetFileCmd() *cli.Command {
 				Usage:   "Output directory",
 			},
 		},
-		Action: func(ctx *cli.Context) error {
-			filename := getFileArg(ctx)
-
-			file, err := a.client.GetFile(filename)
-			if err != nil {
-				fmt.Println(err)
-
-				return err
-			}
-
-			outputDir := getOutputDirArg(ctx)
-
-			return file.Save(outputDir)
-		},
+		Action: a.getFileCmdHandler,
 	}
+}
+
+func (a *Application) getFileCmdHandler(ctx *cli.Context) error {
+	filename := getFileArg(ctx)
+
+	file, err := a.client.GetFile(a.user.Login, a.user.Password, filename)
+	if err != nil {
+		fmt.Println(err)
+
+		return err
+	}
+
+	outputDir := getOutputDirArg(ctx)
+
+	return file.Save(outputDir)
 }
 
 func (a *Application) makeUpdateFileCmd() *cli.Command {
@@ -335,4 +350,25 @@ func getOutputDirArg(ctx *cli.Context) string {
 	}
 
 	return outputDir
+}
+
+func generateKey() (string, error) {
+	const keyLenDefault = 32
+
+	data, err := generateRandom(keyLenDefault)
+	if err != nil {
+		return "", nil
+	}
+
+	return string(data), nil
+}
+
+func generateRandom(size int) ([]byte, error) {
+	b := make([]byte, size)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+
+	return b, nil
 }
