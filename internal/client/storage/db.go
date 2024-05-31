@@ -22,8 +22,8 @@ var (
 type Storage interface {
 	Register(login string, password string, cryptokey string) error
 	User() (*User, error)
-	Save(f *File) error
-	Load(name string) (*File, error)
+	Save(u *User, r *Record) (uint64, error)
+	Load(u *User, name string) (*Record, error)
 	Stop() error
 }
 
@@ -131,12 +131,101 @@ func (s *DbStorage) User() (*User, error) {
 
 	return user, nil
 }
-func (s *DbStorage) Save(f *File) error {
+
+func (s *DbStorage) Save(u *User, r *Record) (uint64, error) {
+	rev, err := s.getRevision(u, r)
+	if err != nil {
+		if errors.Is(err, ErrNotExist) {
+			return 1, s.saveNewData(u, r)
+		}
+
+		return 0, err
+	}
+
+	return rev, s.updateData(u, r)
+}
+
+func (s *DbStorage) saveNewData(u *User, r *Record) error {
+	q := prepareAddDataQuery(u.Login, r.Name, r.Data)
+
+	res, err := s.db.Exec(q.request, q.args...)
+	if err != nil {
+		return err
+	}
+
+	num, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if num != 1 {
+		panic("affected more than one line in db. data isn't consistend")
+	}
+
 	return nil
 }
 
-func (s *DbStorage) Load(name string) (*File, error) {
-	return nil, nil
+func (s *DbStorage) updateData(u *User, r *Record) error {
+	q := prepareUpdateDataQuery(u.Login, r.Name, r.Data)
+
+	res, err := s.db.Exec(q.request, q.args...)
+	if err != nil {
+		return err
+	}
+
+	num, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if num != 1 {
+		panic("affected more than one line in db. data isn't consistend")
+	}
+
+	return nil
+}
+
+var ErrDataNotExist = errors.New("data not exist")
+
+func (s *DbStorage) getRevision(u *User, r *Record) (uint64, error) {
+	query := preareGetRevisionQuery(u.Login, r.Name)
+
+	rows, err := s.db.Query(query.request, query.args...)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return 0, ErrDataNotExist
+	}
+
+	revision := uint64(0)
+	err = rows.Scan(&revision)
+
+	return revision, err
+}
+
+func (s *DbStorage) Load(u *User, name string) (*Record, error) {
+	query := prepareGetDataQuery(u.Login, name)
+
+	rows, err := s.db.Query(query.request, query.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, ErrDataNotExist
+	}
+
+	record := &Record{Name: name}
+	err = rows.Scan(&record.Data, &record.Revision)
+	if err != nil {
+		return nil, err
+	}
+
+	return record, nil
 }
 
 func (s *DbStorage) Stop() error {

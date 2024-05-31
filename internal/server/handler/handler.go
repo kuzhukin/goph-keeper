@@ -24,7 +24,7 @@ func readRequest[T Validaitable](r *http.Request) (T, error) {
 		return parsedRequest, fmt.Errorf("read all err=%w", err)
 	}
 
-	zlog.Logger().Debug("request data: %s", string(data))
+	zlog.Logger().Debugf("request data: %s", string(data))
 
 	if err := json.Unmarshal(data, &parsedRequest); err != nil {
 		return parsedRequest, fmt.Errorf("unmarshal data=%s err=%w", string(data), err)

@@ -28,15 +28,31 @@ func prepareGetUserQuery() *query {
 
 const (
 	createDataTableQuery = `CREATE TABLE IF NOT EXISTS data (
-		"key"			text	NOT NULL,
-		"value"			text	NOT NULL,
-		"revision"		bigint 	NOT NULL,
-		PRIMARY KEY ( "key" )
+		"user"			text		NOT_NULL		
+		"key"			text		NOT NULL,
+		"value"			text		NOT NULL,
+		"revision"		integer 	NOT NULL,
+		PRIMARY KEY ( "user", "key" )
 	);`
 
-	// TODO: реализовать проверку наличия зарегистрированного пользователя
-	addNewDataQuery  = `INSERT INTO data ("key", "value", "revision") VALUES ($1, $2, 1);`
-	updateDataQuery  = `UPDATE data SET "value" = $3, revision = revision + 1 WHERE "user" = $1 AND "key" = 2;`
-	getRevisionQuery = `SELECT "value", "revision" FROM data WHERE "key" = $2;`
-	getData          = `SELECT "value", "revision" FROM data WHERE "key" = $2;`
+	addNewDataQuery  = `INSERT INTO data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
+	updateDataQuery  = `UPDATE data SET "value" = $3 WHERE "user" = $1 AND "key" = 2;`
+	getRevisionQuery = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
+	getData          = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
 )
+
+func prepareAddDataQuery(user string, key string, value string) *query {
+	return &query{request: addNewDataQuery, args: []any{user, key, value}}
+}
+
+func prepareUpdateDataQuery(user, key, value string) *query {
+	return &query{request: updateDataQuery, args: []any{user, key, value}}
+}
+
+func preareGetRevisionQuery(user, key string) *query {
+	return &query{request: updateDataQuery, args: []any{user, key}}
+}
+
+func prepareGetDataQuery(user, key string) *query {
+	return &query{request: getData, args: []any{user, key}}
+}

@@ -72,7 +72,7 @@ func (a *Application) initCLI() {
 			a.makeConfigCmd(),
 			a.makeRegisterCmd(),
 			a.makeCreateFileCmd(),
-			a.makeGetFileCmd(),
+			a.makeGetDataCmd(),
 			a.makeUpdateFileCmd(),
 			a.makeDeleteFileCmd(),
 		},
@@ -190,17 +190,27 @@ func (a *Application) makeCreateFileCmd() *cli.Command {
 }
 
 func (a *Application) createFileCmdHander(ctx *cli.Context) error {
-	filename := getFileArg(ctx)
-
-	err := a.client.CreateFile(a.user.Login, a.user.Password, filename)
+	r, err := readDataFromFileArg(ctx)
 	if err != nil {
-		fmt.Println(err)
+		return nil
 	}
 
-	return err
+	rev, err := a.storage.Save(a.user, r)
+	if err != nil {
+		return err
+	}
+
+	r.Revision = rev
+
+	err = a.client.Upload(a.user, r)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (a *Application) makeGetFileCmd() *cli.Command {
+func (a *Application) makeGetDataCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "get",
 		Aliases: []string{"g"},
@@ -218,23 +228,31 @@ func (a *Application) makeGetFileCmd() *cli.Command {
 				Usage:   "Output directory",
 			},
 		},
-		Action: a.getFileCmdHandler,
+		Action: a.getDataCmdHandler,
 	}
 }
 
-func (a *Application) getFileCmdHandler(ctx *cli.Context) error {
+func (a *Application) getDataCmdHandler(ctx *cli.Context) error {
 	filename := getFileArg(ctx)
 
-	file, err := a.client.GetFile(a.user.Login, a.user.Password, filename)
+	file, err := a.client.Download(a.user, filename)
 	if err != nil {
 		fmt.Println(err)
 
 		return err
 	}
 
-	outputDir := getOutputDirArg(ctx)
+	data := []byte(file.Data)
+	dst := make([]byte, len(data))
 
-	return file.Save(outputDir)
+	_, err = base64.RawStdEncoding.Decode(dst, data)
+	if err != nil {
+		return nil
+	}
+
+	fmt.Println(string(dst))
+
+	return nil
 }
 
 func (a *Application) makeUpdateFileCmd() *cli.Command {
@@ -255,6 +273,27 @@ func (a *Application) makeUpdateFileCmd() *cli.Command {
 			},
 		},
 	}
+}
+
+func (a *Application) updateDataCmdHandler(ctx *cli.Context) error {
+	r, err := readDataFromFileArg(ctx)
+	if err != nil {
+		return err
+	}
+
+	rev, err := a.storage.Save(a.user, r)
+	if err != nil {
+		return nil
+	}
+
+	r.Revision = rev
+
+	err = a.client.Upload(a.user, r)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (a *Application) makeDeleteFileCmd() *cli.Command {
@@ -314,6 +353,22 @@ func (a *Application) Run() error {
 	}
 
 	return nil
+}
+
+func readDataFromFileArg(ctx *cli.Context) (*storage.Record, error) {
+	filename := getFileArg(ctx)
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: encrypt data
+	base64Data := base64.RawStdEncoding.EncodeToString(data)
+
+	r := &storage.Record{Name: filename, Data: base64Data, Revision: 1}
+
+	return r, nil
 }
 
 func getFileArg(ctx *cli.Context) string {

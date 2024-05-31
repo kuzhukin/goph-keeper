@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
@@ -28,15 +27,8 @@ func newClient(config *config.Config) *Client {
 	}
 }
 
-func (c *Client) CreateFile(username, password, filename string) error {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-
-	base64Data := base64.RawStdEncoding.EncodeToString(data)
-
-	return c.doSaveRequest(username, password, filename, base64Data)
+func (c *Client) Upload(u *storage.User, r *storage.Record) error {
+	return c.doSaveRequest(u.Login, u.Password, r.Name, r.Data)
 }
 
 func (c *Client) doSaveRequest(username string, password string, filename string, filedata string) error {
@@ -54,14 +46,14 @@ func (c *Client) doSaveRequest(username string, password string, filename string
 	return request(uri, http.MethodPost, headers, saveDataRequest)
 }
 
-func (c *Client) GetFile(username string, password string, filename string) (*storage.File, error) {
+func (c *Client) Download(u *storage.User, filename string) (*storage.Record, error) {
 	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
 	headers := map[string]string{
-		"Password": password,
+		"Password": u.Password,
 	}
 
 	getDataRequest := &handler.GetDataRequest{
-		User: username,
+		User: u.Login,
 		Key:  filename,
 	}
 
@@ -78,7 +70,7 @@ func (c *Client) GetFile(username string, password string, filename string) (*st
 
 	resp.Data = string(decodedData)
 
-	return &storage.File{Name: filename, Data: string(decodedData), Revision: resp.Revision}, nil
+	return &storage.Record{Name: filename, Data: string(decodedData), Revision: resp.Revision}, nil
 }
 
 func (c *Client) Register(login, password string) error {
