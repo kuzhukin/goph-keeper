@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/aes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage"
+	"github.com/kuzhukin/goph-keeper/internal/gophcrypto"
 	"github.com/urfave/cli/v2"
 )
 
@@ -73,8 +75,9 @@ func (a *Application) initCLI() {
 			a.makeRegisterCmd(),
 			a.makeCreateFileCmd(),
 			a.makeGetDataCmd(),
+			a.makeListCmd(),
 			a.makeUpdateFileCmd(),
-			a.makeDeleteFileCmd(),
+			a.makeDeleteBinaryDataCmd(),
 		},
 	}
 }
@@ -142,16 +145,20 @@ func (a *Application) makeRegisterCmd() *cli.Command {
 func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 	login := getLoginArg(ctx)
 	password := getPasswordArg(ctx)
-	encryptedPassword := encodePassword(password)
 
 	cryptoKey, err := generateKey()
 	if err != nil {
 		return nil
 	}
 
-	cryptoKeyStr := string(cryptoKey)
+	crypto, err := gophcrypto.New(cryptoKey)
+	if err != nil {
+		return err
+	}
 
-	err = a.storage.Register(login, encryptedPassword, cryptoKeyStr)
+	encryptedPassword := crypto.Encrypt([]byte(password), vecFromUser(crypto, a.user))
+
+	err = a.storage.Register(login, encryptedPassword, base64.RawStdEncoding.EncodeToString(cryptoKey))
 	if err != nil {
 		return err
 	}
@@ -162,6 +169,13 @@ func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 	}
 
 	return nil
+}
+
+func vecFromUser(crypto *gophcrypto.Cryptographer, u *storage.User) []byte {
+	s := sha256.Sum256(u.CryptoKey)
+	vec := s[:crypto.VecLen()]
+
+	return vec
 }
 
 func encodePassword(password string) string {
@@ -190,7 +204,7 @@ func (a *Application) makeCreateFileCmd() *cli.Command {
 }
 
 func (a *Application) createFileCmdHander(ctx *cli.Context) error {
-	r, err := readDataFromFileArg(ctx)
+	r, err := a.readDataFromFileArg(ctx)
 	if err != nil {
 		return nil
 	}
@@ -214,8 +228,9 @@ func (a *Application) makeGetDataCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "get",
 		Aliases: []string{"g"},
-		Usage:   "Download file from server",
-		Before:  a.checkConfig,
+		// FIXME: по факту файл должен тянутся из локальной базы, для стягивания с сервера должна быть другая команда
+		Usage:  "Download file from server",
+		Before: a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -255,6 +270,29 @@ func (a *Application) getDataCmdHandler(ctx *cli.Context) error {
 	return nil
 }
 
+func (a *Application) makeListCmd() *cli.Command {
+	return &cli.Command{
+		Name:    "list",
+		Aliases: []string{"l"},
+		Usage:   "Print local data names and revisions",
+		Before:  a.checkConfig,
+		Action:  a.listCmdHandler,
+	}
+}
+
+func (a *Application) listCmdHandler(ctx *cli.Context) error {
+	records, err := a.storage.List(a.user)
+	if err != nil {
+		return err
+	}
+
+	for _, r := range records {
+		fmt.Printf("\t%s (%s)\n", r.Name, r.Revision)
+	}
+
+	return nil
+}
+
 func (a *Application) makeUpdateFileCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "update",
@@ -272,11 +310,12 @@ func (a *Application) makeUpdateFileCmd() *cli.Command {
 				Usage: "rewrite file on the server",
 			},
 		},
+		Action: a.updateDataCmdHandler,
 	}
 }
 
 func (a *Application) updateDataCmdHandler(ctx *cli.Context) error {
-	r, err := readDataFromFileArg(ctx)
+	r, err := a.readDataFromFileArg(ctx)
 	if err != nil {
 		return err
 	}
@@ -296,7 +335,7 @@ func (a *Application) updateDataCmdHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func (a *Application) makeDeleteFileCmd() *cli.Command {
+func (a *Application) makeDeleteBinaryDataCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "delete",
 		Aliases: []string{"d"},
@@ -311,6 +350,8 @@ func (a *Application) makeDeleteFileCmd() *cli.Command {
 		},
 	}
 }
+
+// func (a *Application) delete
 
 // func (a *Application) makeEditFileCmd() *cli.Command {
 // 	return &cli.Command{
@@ -355,7 +396,7 @@ func (a *Application) Run() error {
 	return nil
 }
 
-func readDataFromFileArg(ctx *cli.Context) (*storage.Record, error) {
+func (a *Application) readDataFromFileArg(ctx *cli.Context) (*storage.Record, error) {
 	filename := getFileArg(ctx)
 
 	data, err := os.ReadFile(filename)
@@ -363,10 +404,14 @@ func readDataFromFileArg(ctx *cli.Context) (*storage.Record, error) {
 		return nil, err
 	}
 
-	// TODO: encrypt data
-	base64Data := base64.RawStdEncoding.EncodeToString(data)
+	crypto, err := gophcrypto.New([]byte(a.user.CryptoKey))
+	if err != nil {
+		return nil, err
+	}
 
-	r := &storage.Record{Name: filename, Data: base64Data, Revision: 1}
+	encryptedData := crypto.Encrypt(data, vecFromUser(crypto, a.user))
+
+	r := &storage.Record{Name: filename, Data: encryptedData, Revision: 1}
 
 	return r, nil
 }
@@ -407,15 +452,15 @@ func getOutputDirArg(ctx *cli.Context) string {
 	return outputDir
 }
 
-func generateKey() (string, error) {
-	const keyLenDefault = 32
+func generateKey() ([]byte, error) {
+	const keyLenDefault = aes.BlockSize
 
 	data, err := generateRandom(keyLenDefault)
 	if err != nil {
-		return "", nil
+		return nil, nil
 	}
 
-	return string(data), nil
+	return data, nil
 }
 
 func generateRandom(size int) ([]byte, error) {

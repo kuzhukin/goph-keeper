@@ -7,7 +7,8 @@ type Record struct {
 }
 
 type User struct {
-	Login    string
-	Password string
-	IsActive bool
+	Login     string
+	Password  string
+	IsActive  bool
+	CryptoKey []byte
 }

@@ -10,7 +10,6 @@ import (
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/mattn/go-sqlite3"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -24,6 +23,7 @@ type Storage interface {
 	User() (*User, error)
 	Save(u *User, r *Record) (uint64, error)
 	Load(u *User, name string) (*Record, error)
+	List(u *User) ([]*Record, error)
 	Stop() error
 }
 
@@ -83,7 +83,7 @@ func (s *DbStorage) Register(login string, password string, cryptoKey string) er
 	_, err := s.db.Exec(query.request, query.args...)
 	if err != nil {
 		if sqliteErr, ok := err.(sqlite3.Error); ok {
-			if errors.Is(sqliteErr.Code, sqlite3.ErrNo(sqlite3.ErrConstraintUnique)) {
+			if sqliteErr.Code.Error() == sqlite3.ErrConstraintUnique.Error() {
 				fmt.Println("User alreay registred in client")
 
 				return nil
@@ -120,7 +120,10 @@ func (s *DbStorage) User() (*User, error) {
 	}
 
 	user := &User{IsActive: true}
-	err = rows.Scan(&user.Login, &user.Password)
+
+	cryptoKeyBase64 := ""
+
+	err = rows.Scan(&user.Login, &user.Password, &cryptoKeyBase64)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +131,13 @@ func (s *DbStorage) User() (*User, error) {
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
+
+	cryptoKey, err := base64.RawStdEncoding.DecodeString(cryptoKeyBase64)
+	if err != nil {
+		return nil, err
+	}
+
+	user.CryptoKey = cryptoKey
 
 	return user, nil
 }
@@ -226,6 +236,35 @@ func (s *DbStorage) Load(u *User, name string) (*Record, error) {
 	}
 
 	return record, nil
+}
+
+func (s *DbStorage) List(u *User) ([]*Record, error) {
+	query := prepareListDataQuery(u.Login)
+
+	rows, err := s.db.Query(query.request, query.args...)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	records := make([]*Record, 10)
+
+	for rows.Next() {
+		r := &Record{}
+		err = rows.Scan(&r.Name, &r.Data, &r.Revision)
+		if err != nil {
+			return nil, err
+		}
+
+		records = append(records, r)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
 }
 
 func (s *DbStorage) Stop() error {

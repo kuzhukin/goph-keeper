@@ -28,19 +28,15 @@ func newClient(config *config.Config) *Client {
 }
 
 func (c *Client) Upload(u *storage.User, r *storage.Record) error {
-	return c.doSaveRequest(u.Login, u.Password, r.Name, r.Data)
-}
-
-func (c *Client) doSaveRequest(username string, password string, filename string, filedata string) error {
 	saveDataRequest := handler.SaveDataRequest{
-		User: username,
-		Key:  filename,
-		Data: string(filedata),
+		User: u.Login,
+		Key:  r.Name,
+		Data: string(r.Data),
 	}
 
 	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
 	headers := map[string]string{
-		"Password": password,
+		"Password": u.Password,
 	}
 
 	return request(uri, http.MethodPost, headers, saveDataRequest)
@@ -84,6 +80,17 @@ func (c *Client) Register(login, password string) error {
 	return request(uri, http.MethodPut, map[string]string{}, regstrationRequest)
 }
 
+func (c *Client) Delete(login, password, dataKey string) error {
+	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
+
+	deleteRequest := &handler.DeleteDataRequest{
+		User: login,
+		Key:  dataKey,
+	}
+
+	return request(uri, http.MethodDelete, map[string]string{password: password}, deleteRequest)
+}
+
 func request(uri string, method string, headers map[string]string, request any) error {
 	req, err := makeRequest(uri, method, headers, request)
 	if err != nil {
@@ -95,6 +102,11 @@ func request(uri string, method string, headers map[string]string, request any) 
 		return err
 	}
 	defer resp.Body.Close()
+
+	// TODO: add user friendly errors printing
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("request errors, code=%v", resp.StatusCode)
+	}
 
 	return nil
 }

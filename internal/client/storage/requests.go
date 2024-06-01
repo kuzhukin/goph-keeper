@@ -15,7 +15,7 @@ const (
 	);`
 
 	insertUser = `INSERT INTO users ("login", "password", "crypto_key", "active") VALUES ($1, $2, $3, 1);`
-	getUser    = `SELECT "login", "password" FROM users WHERE "active" == 1;`
+	getUser    = `SELECT "login", "password", "crypto_key" FROM users WHERE "active" == 1;`
 )
 
 func prepareInsertUserQuery(login, password, crypto_key string) *query {
@@ -28,7 +28,7 @@ func prepareGetUserQuery() *query {
 
 const (
 	createDataTableQuery = `CREATE TABLE IF NOT EXISTS data (
-		"user"			text		NOT_NULL		
+		"user"			text		NOT_NULL,
 		"key"			text		NOT NULL,
 		"value"			text		NOT NULL,
 		"revision"		integer 	NOT NULL,
@@ -39,6 +39,7 @@ const (
 	updateDataQuery  = `UPDATE data SET "value" = $3 WHERE "user" = $1 AND "key" = 2;`
 	getRevisionQuery = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
 	getData          = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
+	listData         = `SELECT "key", "value", "revision" FROM data WHERE "user" = $1;`
 )
 
 func prepareAddDataQuery(user string, key string, value string) *query {
@@ -55,4 +56,8 @@ func preareGetRevisionQuery(user, key string) *query {
 
 func prepareGetDataQuery(user, key string) *query {
 	return &query{request: getData, args: []any{user, key}}
+}
+
+func prepareListDataQuery(user string) *query {
+	return &query{request: listData, args: []any{user}}
 }
