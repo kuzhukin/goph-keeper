@@ -2,7 +2,6 @@ package client
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,15 +63,7 @@ func (c *Client) Download(u *storage.User, filename string) (*storage.Record, er
 		return nil, err
 	}
 
-	decodedData, err := base64.RawStdEncoding.DecodeString(resp.Data)
-
-	if err != nil {
-		return nil, err
-	}
-
-	resp.Data = string(decodedData)
-
-	return &storage.Record{Name: filename, Data: string(decodedData), Revision: resp.Revision}, nil
+	return &storage.Record{Name: filename, Data: resp.Data, Revision: resp.Revision}, nil
 }
 
 func (c *Client) Register(login, password string) error {

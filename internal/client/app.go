@@ -257,15 +257,14 @@ func (a *Application) getDataCmdHandler(ctx *cli.Context) error {
 		return err
 	}
 
-	data := []byte(file.Data)
-	dst := make([]byte, len(data))
+	fmt.Println(file.Data)
 
-	_, err = base64.RawStdEncoding.Decode(dst, data)
+	decryptedData, err := a.decryptUserData([]byte(file.Data))
 	if err != nil {
-		return nil
+		return err
 	}
 
-	fmt.Println(string(dst))
+	fmt.Println(string(decryptedData))
 
 	return nil
 }
@@ -408,16 +407,32 @@ func (a *Application) readDataFromFileArg(ctx *cli.Context) (*storage.Record, er
 		return nil, err
 	}
 
+	encryptedData, err := a.encryptUserData(data)
+	if err != nil {
+		return nil, err
+	}
+
+	r := &storage.Record{Name: filename, Data: string(encryptedData), Revision: 1}
+
+	return r, nil
+}
+
+func (a *Application) decryptUserData(data []byte) ([]byte, error) {
 	crypto, err := gophcrypto.New([]byte(a.user.CryptoKey))
 	if err != nil {
 		return nil, err
 	}
 
-	encryptedData := crypto.Encrypt(data, vecFromUser(crypto, a.user))
+	return crypto.Decrypt(data, vecFromUser(crypto, a.user))
+}
 
-	r := &storage.Record{Name: filename, Data: encryptedData, Revision: 1}
+func (a *Application) encryptUserData(data []byte) ([]byte, error) {
+	crypto, err := gophcrypto.New([]byte(a.user.CryptoKey))
+	if err != nil {
+		return nil, err
+	}
 
-	return r, nil
+	return []byte(crypto.Encrypt(data, vecFromUser(crypto, a.user))), nil
 }
 
 func getFileArg(ctx *cli.Context) string {
