@@ -72,8 +72,6 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
-	zlog.Logger().Debugf("111 %v", req)
-
 	data, revision, err := h.storage.Load(r.Context(), req.User, req.Key)
 	if err != nil {
 		responsestorageError(w, err)
@@ -111,9 +109,13 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 
-	zlog.Logger().Infof("handleSaveData req=%v", req)
-
 	if err := h.storage.Save(r.Context(), req.User, req.Key, req.Data); err != nil {
+		if errors.Is(err, ErrDataAlreadyExist) {
+			w.WriteHeader(http.StatusAccepted)
+
+			return nil
+		}
+
 		responsestorageError(w, err)
 
 		return err

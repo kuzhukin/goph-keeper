@@ -82,12 +82,10 @@ func (s *DbStorage) Register(login string, password string, cryptoKey string) er
 
 	_, err := s.db.Exec(query.request, query.args...)
 	if err != nil {
-		if sqliteErr, ok := err.(sqlite3.Error); ok {
-			if sqliteErr.Code.Error() == sqlite3.ErrConstraintUnique.Error() {
-				fmt.Println("User alreay registred in client")
+		if isUniqueConstraint(err) {
+			fmt.Println("User alreay registred in client")
 
-				return nil
-			}
+			return nil
 		}
 
 		return err
@@ -102,6 +100,15 @@ func (s *DbStorage) changeCurrentUserStatus(login string) error {
 	// TODO: сделать текущего активного пользователя пассивным
 
 	return nil
+}
+
+func isUniqueConstraint(err error) bool {
+	sqliteErr, ok := err.(sqlite3.Error)
+	if !ok {
+		return false
+	}
+
+	return sqliteErr.Code.Error() == sqlite3.ErrConstraintUnique.Error()
 }
 
 var ErrNotActiveOrRegistredUsers = errors.New("don't have active or registred users")
@@ -144,18 +151,24 @@ func (s *DbStorage) User() (*User, error) {
 
 func (s *DbStorage) Save(u *User, r *Record) (uint64, error) {
 	rev, err := s.getRevision(u, r)
+	fmt.Println(rev, err)
+
 	if err != nil {
-		if errors.Is(err, ErrNotExist) {
+		if errors.Is(err, ErrDataNotExist) {
 			return 1, s.saveNewData(u, r)
 		}
 
 		return 0, err
 	}
 
+	fmt.Println("update exist data")
+
 	return rev, s.updateData(u, r)
 }
 
 func (s *DbStorage) saveNewData(u *User, r *Record) error {
+	fmt.Println(111)
+
 	q := prepareAddDataQuery(u.Login, r.Name, r.Data)
 
 	res, err := s.db.Exec(q.request, q.args...)
@@ -180,6 +193,7 @@ func (s *DbStorage) updateData(u *User, r *Record) error {
 
 	res, err := s.db.Exec(q.request, q.args...)
 	if err != nil {
+		fmt.Println(111)
 		return err
 	}
 
@@ -188,7 +202,7 @@ func (s *DbStorage) updateData(u *User, r *Record) error {
 		return err
 	}
 
-	if num != 1 {
+	if num > 1 {
 		panic("affected more than one line in db. data isn't consistend")
 	}
 
@@ -248,16 +262,16 @@ func (s *DbStorage) List(u *User) ([]*Record, error) {
 
 	defer rows.Close()
 
-	records := make([]*Record, 10)
+	records := []*Record{}
 
 	for rows.Next() {
-		r := &Record{}
+		r := Record{}
 		err = rows.Scan(&r.Name, &r.Data, &r.Revision)
 		if err != nil {
 			return nil, err
 		}
 
-		records = append(records, r)
+		records = append(records, &r)
 	}
 
 	if err := rows.Err(); err != nil {

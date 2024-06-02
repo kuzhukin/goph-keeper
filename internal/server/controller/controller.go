@@ -18,10 +18,6 @@ var _ handler.Storage = &Controller{}
 var _ handler.Authenticator = &Controller{}
 var _ handler.Registrator = &Controller{}
 
-var (
-	ErrDataAlreadyExist = errors.New("data already exist")
-)
-
 type Controller struct {
 	db *sql.DB
 }
@@ -85,7 +81,7 @@ func (c *Controller) Save(ctx context.Context, user, key, data string) error {
 	_, err := doQuery(ctxWithTimeout, executor)
 	if err != nil {
 		if isNotUniqueError(err) {
-			return ErrDataAlreadyExist
+			return handler.ErrDataAlreadyExist
 		}
 
 		return fmt.Errorf("do query err=%w", err)

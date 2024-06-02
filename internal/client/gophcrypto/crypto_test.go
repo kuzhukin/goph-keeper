@@ -11,7 +11,7 @@ import (
 
 func TestCrypto(t *testing.T) {
 
-	data := []byte("Ключ от сердца")
+	data := []byte("12345")
 
 	key, err := generateRandom(2 * aes.BlockSize)
 	require.NoError(t, err)

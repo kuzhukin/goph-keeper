@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
+	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage"
-	"github.com/kuzhukin/goph-keeper/internal/gophcrypto"
 	"github.com/urfave/cli/v2"
 )
 
@@ -54,6 +54,11 @@ func NewApplication() (*Application, error) {
 
 		user, err := app.storage.User()
 		if err != nil && !errors.Is(err, storage.ErrNotActiveOrRegistredUsers) {
+			return nil, err
+		}
+
+		user.CryptoKey, err = base64.RawStdEncoding.DecodeString(string(user.CryptoKey))
+		if err != nil {
 			return nil, err
 		}
 
@@ -178,13 +183,6 @@ func vecFromUser(crypto *gophcrypto.Cryptographer, u *storage.User) []byte {
 	return vec
 }
 
-func encodePassword(password string) string {
-	h := sha256.New()
-	h.Write([]byte(password))
-
-	return base64.RawStdEncoding.EncodeToString(h.Sum(nil))
-}
-
 func (a *Application) makeCreateFileCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "create",
@@ -206,7 +204,7 @@ func (a *Application) makeCreateFileCmd() *cli.Command {
 func (a *Application) createFileCmdHander(ctx *cli.Context) error {
 	r, err := a.readDataFromFileArg(ctx)
 	if err != nil {
-		return nil
+		return fmt.Errorf("read data from file, err=%w", err)
 	}
 
 	rev, err := a.storage.Save(a.user, r)
@@ -220,6 +218,8 @@ func (a *Application) createFileCmdHander(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("Data from file=%s is saves", r.Name)
 
 	return nil
 }
@@ -286,8 +286,12 @@ func (a *Application) listCmdHandler(ctx *cli.Context) error {
 		return err
 	}
 
+	if len(records) == 0 {
+		fmt.Println("Records isn't exist")
+	}
+
 	for _, r := range records {
-		fmt.Printf("\t%s (%s)\n", r.Name, r.Revision)
+		fmt.Printf("\t%s (%d)\n", r.Name, r.Revision)
 	}
 
 	return nil

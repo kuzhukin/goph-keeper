@@ -39,7 +39,13 @@ func (c *Client) Upload(u *storage.User, r *storage.Record) error {
 		"Password": u.Password,
 	}
 
-	return request(uri, http.MethodPost, headers, saveDataRequest)
+	return requestAndHandle(uri, http.MethodPost, headers, saveDataRequest, func(r *http.Response) error {
+		if r.StatusCode != http.StatusOK && r.StatusCode != http.StatusAccepted {
+			return statusCodeToError(r.StatusCode)
+		}
+
+		return nil
+	})
 }
 
 func (c *Client) Download(u *storage.User, filename string) (*storage.Record, error) {
@@ -91,7 +97,26 @@ func (c *Client) Delete(login, password, dataKey string) error {
 	return request(uri, http.MethodDelete, map[string]string{password: password}, deleteRequest)
 }
 
+type httpResponseHandler func(*http.Response) error
+
+func defaultHttpResponseHandler(r *http.Response) error {
+	switch r.StatusCode {
+	case http.StatusOK:
+		return nil
+	default:
+		return statusCodeToError(r.StatusCode)
+	}
+}
+
 func request(uri string, method string, headers map[string]string, request any) error {
+	return requestAndHandle(uri, method, headers, request, defaultHttpResponseHandler)
+}
+
+func statusCodeToError(statusCode int) error {
+	return fmt.Errorf("request failed code=%s error=%s", statusCode, http.StatusText(statusCode))
+}
+
+func requestAndHandle(uri string, method string, headers map[string]string, request any, handler httpResponseHandler) error {
 	req, err := makeRequest(uri, method, headers, request)
 	if err != nil {
 		return err
@@ -103,9 +128,8 @@ func request(uri string, method string, headers map[string]string, request any) 
 	}
 	defer resp.Body.Close()
 
-	// TODO: add user friendly errors printing
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("request errors, code=%v", resp.StatusCode)
+	if err := handler(resp); err != nil {
+		return fmt.Errorf("handler err=%w", err)
 	}
 
 	return nil
