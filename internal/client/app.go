@@ -462,14 +462,14 @@ func getPasswordArg(ctx *cli.Context) string {
 	return value
 }
 
-func getOutputDirArg(ctx *cli.Context) string {
-	outputDir := ctx.String("output-dir")
-	if len(outputDir) == 0 {
-		outputDir = "."
-	}
+// func getOutputDirArg(ctx *cli.Context) string {
+// 	outputDir := ctx.String("output-dir")
+// 	if len(outputDir) == 0 {
+// 		outputDir = "."
+// 	}
 
-	return outputDir
-}
+// 	return outputDir
+// }
 
 func generateKey() ([]byte, error) {
 	const keyLenDefault = aes.BlockSize

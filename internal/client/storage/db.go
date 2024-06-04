@@ -96,11 +96,11 @@ func (s *DbStorage) Register(login string, password string, cryptoKey string) er
 	return nil
 }
 
-func (s *DbStorage) changeCurrentUserStatus(login string) error {
-	// TODO: сделать текущего активного пользователя пассивным
+// func (s *DbStorage) changeCurrentUserStatus(login string) error {
+// 	// TODO: сделать текущего активного пользователя пассивным
 
-	return nil
-}
+// 	return nil
+// }
 
 func isUniqueConstraint(err error) bool {
 	sqliteErr, ok := err.(sqlite3.Error)
@@ -167,8 +167,6 @@ func (s *DbStorage) Save(u *User, r *Record) (uint64, error) {
 }
 
 func (s *DbStorage) saveNewData(u *User, r *Record) error {
-	fmt.Println(111)
-
 	q := prepareAddDataQuery(u.Login, r.Name, r.Data)
 
 	res, err := s.db.Exec(q.request, q.args...)
@@ -176,13 +174,9 @@ func (s *DbStorage) saveNewData(u *User, r *Record) error {
 		return err
 	}
 
-	num, err := res.RowsAffected()
+	_, err = res.RowsAffected()
 	if err != nil {
 		return err
-	}
-
-	if num != 1 {
-		panic("affected more than one line in db. data isn't consistend")
 	}
 
 	return nil
@@ -193,17 +187,12 @@ func (s *DbStorage) updateData(u *User, r *Record) error {
 
 	res, err := s.db.Exec(q.request, q.args...)
 	if err != nil {
-		fmt.Println(111)
 		return err
 	}
 
-	num, err := res.RowsAffected()
+	_, err = res.RowsAffected()
 	if err != nil {
 		return err
-	}
-
-	if num > 1 {
-		panic("affected more than one line in db. data isn't consistend")
 	}
 
 	return nil

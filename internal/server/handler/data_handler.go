@@ -8,16 +8,32 @@ import (
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
 
-var ErrDataAlreadyExist = errors.New("data alreadt exist")
-var ErrInternalProblem = errors.New("storage internal error")
-var ErrDataNotFound = errors.New("storage doesn't have data")
-var ErrBadRevision = errors.New("bad revision error")
+var (
+	ErrDataAlreadyExist = errors.New("data alreadt exist")
+	ErrInternalProblem  = errors.New("storage internal error")
+	ErrDataNotFound     = errors.New("storage doesn't have data")
+	ErrBadRevision      = errors.New("bad revision error")
+	ErrUnknownUser      = errors.New("unknown user")
+	ErrBadPassword      = errors.New("bad password")
+)
 
 type Storage interface {
-	Save(ctx context.Context, user, key string, data string) error
-	Update(ctx context.Context, user, key string, data string, revision uint64) error
-	Load(ctx context.Context, user, key string) (string, uint64, error)
-	Delete(ctx context.Context, user, key string) error
+	Save(ctx context.Context, u *User, d *Data) error
+	Update(ctx context.Context, u *User, d *Data) error
+	Load(ctx context.Context, u *User, d string) (*Data, error)
+	Delete(ctx context.Context, u *User, d *Data) error
+}
+
+type User struct {
+	Login    string
+	Password string
+}
+
+type Data struct {
+	Key      string
+	Data     string
+	Revision uint64
+	Metainfo string
 }
 
 type DataHandler struct {
@@ -72,16 +88,25 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
-	data, revision, err := h.storage.Load(r.Context(), req.User, req.Key)
+	password := r.Header.Get("password")
+	if len(password) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+
+		return nil
+	}
+
+	user := &User{Login: req.User, Password: password}
+
+	data, err := h.storage.Load(r.Context(), user, req.Key)
 	if err != nil {
 		responsestorageError(w, err)
 		return err
 	}
 
 	response := GetDataResponse{
-		Key:      req.Key,
-		Data:     data,
-		Revision: revision,
+		Key:      data.Key,
+		Data:     data.Data,
+		Revision: data.Revision,
 	}
 
 	if err := writeResponse(w, response); err != nil {
@@ -109,12 +134,17 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 
-	if err := h.storage.Save(r.Context(), req.User, req.Key, req.Data); err != nil {
-		if errors.Is(err, ErrDataAlreadyExist) {
-			w.WriteHeader(http.StatusAccepted)
+	password := r.Header.Get("password")
+	if len(password) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
 
-			return nil
-		}
+		return nil
+	}
+
+	user := &User{Login: req.User, Password: password}
+	data := &Data{Key: req.Key, Data: req.Data}
+
+	if err := h.storage.Save(r.Context(), user, data); err != nil {
 
 		responsestorageError(w, err)
 
@@ -159,7 +189,17 @@ func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	if err := h.storage.Update(r.Context(), req.User, req.Key, req.Data, req.Revision); err != nil {
+	password := r.Header.Get("password")
+	if len(password) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+
+		return nil
+	}
+
+	user := &User{Login: req.User, Password: password}
+	data := &Data{Key: req.Key, Data: req.Data, Revision: req.Revision}
+
+	if err := h.storage.Update(r.Context(), user, data); err != nil {
 		responsestorageError(w, err)
 
 		return err
@@ -187,7 +227,17 @@ func (h *DataHandler) handleDeleteData(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	if err := h.storage.Delete(r.Context(), req.User, req.Key); err != nil {
+	password := r.Header.Get("password")
+	if len(password) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+
+		return nil
+	}
+
+	user := &User{Login: req.User, Password: password}
+	data := &Data{Key: req.Key}
+
+	if err := h.storage.Delete(r.Context(), user, data); err != nil {
 		responsestorageError(w, err)
 
 		return err

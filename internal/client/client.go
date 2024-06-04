@@ -104,7 +104,7 @@ func request(uri string, method string, headers map[string]string, request any) 
 }
 
 func statusCodeToError(statusCode int) error {
-	return fmt.Errorf("request failed code=%s error=%s", statusCode, http.StatusText(statusCode))
+	return fmt.Errorf("request failed code=%d error=%s", statusCode, http.StatusText(statusCode))
 }
 
 func requestAndHandle(uri string, method string, headers map[string]string, request any, handler httpResponseHandler) error {

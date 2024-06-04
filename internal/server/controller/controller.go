@@ -73,61 +73,109 @@ func (c *Controller) exec(query string) error {
 	return nil
 }
 
-func (c *Controller) Save(ctx context.Context, user, key, data string) error {
+func (c *Controller) Save(ctx context.Context, u *handler.User, d *handler.Data) error {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	executor := c.makeExecFunc(prepareNewDataQuery(user, key, data))
-	_, err := doQuery(ctxWithTimeout, executor)
+	tx, err := c.db.BeginTx(ctxWithTimeout, nil)
 	if err != nil {
-		if isNotUniqueError(err) {
-			return handler.ErrDataAlreadyExist
-		}
+		return err
+	}
+	defer recoverAndRollBack(tx)
 
-		return fmt.Errorf("do query err=%w", err)
+	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+		return err
 	}
 
-	return nil
+	query := prepareNewDataQuery(u.Login, d.Key, d.Data)
+
+	err = doTransactionExec(ctx, tx, query)
+	if err != nil {
+		return fmt.Errorf("add user=%s data=%s, err=%w", u.Login, d.Data, err)
+	}
+
+	return tx.Commit()
 }
 
-func (c *Controller) Update(ctx context.Context, user, key, data string, revision uint64) error {
-	return nil
-}
-
-func (c *Controller) Load(ctx context.Context, user, key string) (string, uint64, error) {
+func (c *Controller) Update(ctx context.Context, u *handler.User, d *handler.Data) error {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
-	executor := c.makeQueryFunc(prepareGetDataQuery(user, key))
-	rows, err := doQuery(ctxWithTimeout, executor)
+	tx, err := c.db.BeginTx(ctxWithTimeout, nil)
 	if err != nil {
-		return "", 0, fmt.Errorf("do query, err=%w", err)
+		return err
+	}
+	defer recoverAndRollBack(tx)
+
+	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+		return err
 	}
 
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			zlog.Logger().Errorf("rows close err=%s", err)
-		}
-	}()
-
-	var data string
-	var revision uint64
-
-	err = scanRow(rows, &data, &revision)
+	storedData, err := getDataInTransaction(ctx, tx, u, d.Key)
 	if err != nil {
-		return "", 0, fmt.Errorf("user=%s, key=%s, err=%w", user, key, err)
+		return err
 	}
 
-	return data, revision, nil
+	if storedData.Revision != d.Revision {
+		return fmt.Errorf("user=%s data=%s err=%w", u.Login, d.Key, handler.ErrBadRevision)
+	}
+
+	if storedData.Data == d.Data {
+		// doesn't need in changes
+		return nil
+	}
+
+	err = doTransactionExec(ctx, tx, prepareUpdateDataQuery(u.Login, d.Key, d.Data, d.Revision))
+	if err != nil {
+		return fmt.Errorf("do update user=%s, data=%s, rev=%d, err=%w", u.Login, d.Key, d.Revision, err)
+	}
+
+	return tx.Commit()
 }
 
-func (c *Controller) Delete(ctx context.Context, user, key string) error {
-	return nil
+func (c *Controller) Load(ctx context.Context, u *handler.User, dataKey string) (*handler.Data, error) {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	tx, err := c.db.BeginTx(ctxWithTimeout, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer recoverAndRollBack(tx)
+
+	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+		return nil, err
+	}
+
+	d, err := getDataInTransaction(ctx, tx, u, dataKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return d, tx.Commit()
 }
 
-var ErrUserIsNotExist = errors.New("user isn't exist")
-var ErrWrongUserPassword = errors.New("wrong user's password")
+func (c *Controller) Delete(ctx context.Context, u *handler.User, d *handler.Data) error {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	tx, err := c.db.BeginTx(ctxWithTimeout, nil)
+	if err != nil {
+		return err
+	}
+	defer recoverAndRollBack(tx)
+
+	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+		return err
+	}
+
+	err = deleteDataInTransaction(ctx, tx, u, d.Key)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
 
 // Register new user
 // return:
@@ -143,36 +191,31 @@ func (c *Controller) Register(ctx context.Context, login string, password string
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err := recover()
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer recoverAndRollBack(tx)
 
 	query := prepareGetUserQuery(login)
 
-	user, err := doTransactionQuery(ctxWithTimeout, tx, query, func(rows *sql.Rows) (*userInfo, error) {
+	user, err := doTransactionQuery(ctxWithTimeout, tx, query, func(rows *sql.Rows) (*handler.User, error) {
 		if !rows.Next() {
-			return nil, ErrUserIsNotExist
+			return nil, handler.ErrUnknownUser
 		}
 
-		user := &userInfo{}
-		if err := rows.Scan(&user.login, &user.password); err != nil {
+		user := &handler.User{}
+		if err := rows.Scan(&user.Login, &user.Password); err != nil {
 			return nil, err
 		}
 
 		return user, nil
 	})
 	if err == nil {
-		if user.password != password {
-			return ErrWrongUserPassword
+		if user.Password != password {
+			return handler.ErrBadPassword
 		}
 
 		return nil
 	}
 
-	if !errors.Is(err, ErrUserIsNotExist) {
+	if !errors.Is(err, handler.ErrUnknownUser) {
 		return err
 	}
 
@@ -184,51 +227,86 @@ func (c *Controller) Register(ctx context.Context, login string, password string
 	}
 
 	return tx.Commit()
+}
 
+func recoverAndRollBack(tx *sql.Tx) {
+	err := recover()
+	if err != nil {
+		err = tx.Rollback()
+		if err != nil {
+			zlog.Logger().Errorf("tx rollback failed, err=%w", err)
+		}
+	}
 }
 
 func (c *Controller) Authenticate(ctx context.Context, user string, password string) error {
+	// TODO: скорей всего это не нужный метод
 	return nil
+}
+
+func checkUserInTransaction(
+	ctx context.Context,
+	tx *sql.Tx,
+	u *handler.User,
+) error {
+	userQuery := prepareGetUserQuery(u.Login)
+
+	storedUser, err := doTransactionQuery(ctx, tx, userQuery, func(rows *sql.Rows) (*handler.User, error) {
+		storedUser := &handler.User{}
+
+		if !rows.Next() {
+			return nil, fmt.Errorf("user=%s isn't registred err=%w", u.Login, handler.ErrUnknownUser)
+		}
+
+		if err := rows.Scan(&storedUser.Login, &storedUser.Password); err != nil {
+			return nil, err
+		}
+
+		return storedUser, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if storedUser.Password != u.Password {
+		return fmt.Errorf("user=%s, err=%w", u.Login, handler.ErrBadPassword)
+	}
+
+	return err
+}
+
+func getDataInTransaction(
+	ctx context.Context,
+	tx *sql.Tx,
+	u *handler.User,
+	dataKey string,
+) (*handler.Data, error) {
+	return doTransactionQuery(ctx, tx, prepareGetDataQuery(u.Login, dataKey), func(rows *sql.Rows) (*handler.Data, error) {
+		if !rows.Next() {
+			return nil, fmt.Errorf("key=%s, err=%w", dataKey, handler.ErrDataNotFound)
+		}
+
+		storedData := &handler.Data{Key: dataKey}
+		if err := rows.Scan(&storedData.Data, &storedData.Revision); err != nil {
+			return nil, err
+		}
+
+		return storedData, nil
+	})
+}
+
+func deleteDataInTransaction(
+	ctx context.Context,
+	tx *sql.Tx,
+	u *handler.User,
+	dataKey string,
+) error {
+	return doTransactionExec(ctx, tx, prepareDeleteDataQuery(u.Login, dataKey))
 }
 
 // ----------------------------------------------------------------------------------------------
 // -------------------------------------- Internal Methods --------------------------------------
 // ----------------------------------------------------------------------------------------------
-
-func scanRow(rows *sql.Rows, dest ...any) error {
-	if rows.Next() {
-		err := rows.Scan(dest...)
-		if err != nil {
-			return fmt.Errorf("scan rows err=%w", err)
-		}
-	} else {
-		return fmt.Errorf("empty rows")
-	}
-
-	return rows.Err()
-}
-
-func (c *Controller) makeExecFunc(query *query) func(context.Context) (*sql.Result, error) {
-	return func(ctx context.Context) (r *sql.Result, err error) {
-		res, err := c.db.ExecContext(ctx, query.request, query.args...)
-		if err != nil {
-			return nil, fmt.Errorf("exec query=%v err=%w", query, err)
-		}
-
-		return &res, nil
-	}
-}
-
-func (c *Controller) makeQueryFunc(query *query) func(context.Context) (*sql.Rows, error) {
-	return func(ctx context.Context) (*sql.Rows, error) {
-		rows, err := c.db.QueryContext(ctx, query.request, query.args...)
-		if err != nil {
-			return nil, fmt.Errorf("do query err=%w", err)
-		}
-
-		return rows, nil
-	}
-}
 
 var tryingIntervals = []time.Duration{
 	time.Millisecond * 100,
@@ -236,12 +314,15 @@ var tryingIntervals = []time.Duration{
 	time.Millisecond * 500,
 }
 
-func doQuery[T any](ctx context.Context, queryFunc func(context.Context) (*T, error)) (*T, error) {
+func doQuery[T any](ctx context.Context, queryFunc func(context.Context) (T, error)) (T, error) {
 	var commonErr error
 	max := len(tryingIntervals)
 
+	var result T
+	var err error
+
 	for trying := 0; trying <= max; trying++ {
-		rows, err := queryFunc(ctx)
+		result, err = queryFunc(ctx)
 		if err != nil {
 			commonErr = errors.Join(commonErr, err)
 
@@ -250,13 +331,13 @@ func doQuery[T any](ctx context.Context, queryFunc func(context.Context) (*T, er
 				continue
 			}
 
-			return nil, commonErr
+			return result, commonErr
 		}
 
-		return rows, nil
+		return result, nil
 	}
 
-	return nil, commonErr
+	return result, commonErr
 }
 
 func isRetriableError(err error) bool {
@@ -265,14 +346,16 @@ func isRetriableError(err error) bool {
 	return errors.As(err, &pgErr) && pgerrcode.IsConnectionException(pgErr.Code)
 }
 
-func isNotUniqueError(err error) bool {
-	var pgErr *pgconn.PgError
+// func isNotUniqueError(err error) bool {
+// 	var pgErr *pgconn.PgError
 
-	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
-}
+// 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
+// }
 
 func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) error {
-	_, err := tx.ExecContext(ctx, query.request, query.args...)
+	_, err := doQuery(ctx, func(ctx context.Context) (sql.Result, error) {
+		return tx.ExecContext(ctx, query.request, query.args...)
+	})
 
 	return err
 }
@@ -280,10 +363,13 @@ func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) error {
 func doTransactionQuery[T any](ctx context.Context, tx *sql.Tx, query *query, parseFun func(rows *sql.Rows) (T, error)) (T, error) {
 	var result T
 
-	rows, err := tx.QueryContext(ctx, query.request, query.args...)
+	rows, err := doQuery(ctx, func(ctx context.Context) (*sql.Rows, error) {
+		return tx.QueryContext(ctx, query.request, query.args...)
+	})
 	if err != nil {
-		return result, err
+		return result, nil
 	}
+
 	defer func() {
 		err := rows.Close()
 		if err != nil {
