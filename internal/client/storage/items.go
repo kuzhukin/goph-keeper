@@ -1,5 +1,7 @@
 package storage
 
+import "time"
+
 type Record struct {
 	Name     string
 	Data     string
@@ -11,4 +13,18 @@ type User struct {
 	Password  string
 	IsActive  bool
 	CryptoKey []byte
+}
+
+type Secret struct {
+	Key   string
+	Value string
+}
+
+const ExpirationFormat = "2006-01-02"
+
+type BankCard struct {
+	Number     string
+	ExpiryDate time.Time
+	Owner      string
+	CvvCode    string
 }

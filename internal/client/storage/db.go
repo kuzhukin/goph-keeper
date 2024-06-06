@@ -19,12 +19,28 @@ var (
 )
 
 type Storage interface {
+	UserStorage
+	DataStorage
+	WalletStorage
+	Stop() error
+}
+
+type DataStorage interface {
+	SaveData(u *User, r *Record) (uint64, error)
+	LoadData(u *User, name string) (*Record, error)
+	ListData(u *User) ([]*Record, error)
+	DeleteData(u *User, r *Record) error
+}
+
+type UserStorage interface {
 	Register(login string, password string, cryptokey string) error
 	User() (*User, error)
-	Save(u *User, r *Record) (uint64, error)
-	Load(u *User, name string) (*Record, error)
-	List(u *User) ([]*Record, error)
-	Stop() error
+}
+
+type WalletStorage interface {
+	CreateCard(u *User, c *BankCard) error
+	ListCard(u *User) ([]*BankCard, error)
+	DeleteCard(u *User, cardNumber string) error
 }
 
 type DbStorage struct {
@@ -70,15 +86,20 @@ func (s *DbStorage) initTables() error {
 	return nil
 }
 
-const (
-	ACTIVE  = 1
-	PASSIVE = 0
-)
-
 func (s *DbStorage) Register(login string, password string, cryptoKey string) error {
 	cryptoKeyBase64 := base64.RawStdEncoding.EncodeToString([]byte(cryptoKey))
 
-	query := prepareInsertUserQuery(login, password, cryptoKeyBase64)
+	if err := s.changeCurrentUserStatus(); err != nil {
+		return err
+	}
+
+	fmt.Println("User was registred. Context was switched to a new user.")
+
+	return s.addNewUser(login, password, cryptoKeyBase64)
+}
+
+func (s *DbStorage) addNewUser(login string, password string, cryptoKey string) error {
+	query := prepareInsertUserQuery(login, password, cryptoKey)
 
 	_, err := s.db.Exec(query.request, query.args...)
 	if err != nil {
@@ -91,16 +112,55 @@ func (s *DbStorage) Register(login string, password string, cryptoKey string) er
 		return err
 	}
 
-	fmt.Println("User was registred. Context was switched to a new user.")
-
 	return nil
 }
 
-// func (s *DbStorage) changeCurrentUserStatus(login string) error {
-// 	// TODO: сделать текущего активного пользователя пассивным
+func (s *DbStorage) changeCurrentUserStatus() error {
+	var err error
 
-// 	return nil
-// }
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		panicErr := recover()
+		if err != nil {
+			fmt.Printf("db transaction panics with error: %v\n", panicErr)
+
+			err = tx.Rollback()
+		}
+	}()
+
+	q := prepareGetUserQuery()
+	rows, err := tx.Query(q.request, q.args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		// don't have active user
+		return nil
+	}
+
+	u := User{IsActive: true}
+	if err = rows.Scan(&u.Login, &u.Password, &u.CryptoKey); err != nil {
+		return err
+	}
+
+	if err = rows.Err(); err != nil {
+		return err
+	}
+
+	q = prepareChangeActiveQuery(u.Login)
+	_, err = tx.Exec(q.request, q.args...)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
 
 func isUniqueConstraint(err error) bool {
 	sqliteErr, ok := err.(sqlite3.Error)
@@ -149,10 +209,16 @@ func (s *DbStorage) User() (*User, error) {
 	return user, nil
 }
 
-func (s *DbStorage) Save(u *User, r *Record) (uint64, error) {
-	rev, err := s.getRevision(u, r)
-	fmt.Println(rev, err)
+func (s *DbStorage) DeleteData(u *User, r *Record) error {
+	q := prepareDeleteDataQuery(u.Login, r.Name)
 
+	_, err := s.db.Exec(q.request, q.args...)
+
+	return err
+}
+
+func (s *DbStorage) SaveData(u *User, r *Record) (uint64, error) {
+	rev, err := s.getRevision(u, r)
 	if err != nil {
 		if errors.Is(err, ErrDataNotExist) {
 			return 1, s.saveNewData(u, r)
@@ -160,8 +226,6 @@ func (s *DbStorage) Save(u *User, r *Record) (uint64, error) {
 
 		return 0, err
 	}
-
-	fmt.Println("update exist data")
 
 	return rev, s.updateData(u, r)
 }
@@ -219,7 +283,7 @@ func (s *DbStorage) getRevision(u *User, r *Record) (uint64, error) {
 	return revision, err
 }
 
-func (s *DbStorage) Load(u *User, name string) (*Record, error) {
+func (s *DbStorage) LoadData(u *User, name string) (*Record, error) {
 	query := prepareGetDataQuery(u.Login, name)
 
 	rows, err := s.db.Query(query.request, query.args...)
@@ -241,7 +305,7 @@ func (s *DbStorage) Load(u *User, name string) (*Record, error) {
 	return record, nil
 }
 
-func (s *DbStorage) List(u *User) ([]*Record, error) {
+func (s *DbStorage) ListData(u *User) ([]*Record, error) {
 	query := prepareListDataQuery(u.Login)
 
 	rows, err := s.db.Query(query.request, query.args...)
@@ -268,6 +332,19 @@ func (s *DbStorage) List(u *User) ([]*Record, error) {
 	}
 
 	return records, nil
+}
+
+// TODO:
+func (s *DbStorage) CreateCard(u *User, c *BankCard) error {
+	return nil
+}
+
+func (s *DbStorage) DeleteCard(u *User, number string) error {
+	return nil
+}
+
+func (s *DbStorage) ListCard(u *User) ([]*BankCard, error) {
+	return []*BankCard{}, nil
 }
 
 func (s *DbStorage) Stop() error {

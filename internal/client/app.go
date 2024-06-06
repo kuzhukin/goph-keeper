@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"unicode"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
@@ -47,10 +48,12 @@ func NewApplication() (*Application, error) {
 	if conf != nil {
 		app.config = conf
 
-		app.storage, err = storage.StartNewDbStorage(conf.Database)
+		dbStorage, err := storage.StartNewDbStorage(conf.Database)
 		if err != nil {
 			return nil, err
 		}
+
+		app.storage = dbStorage
 
 		user, err := app.storage.User()
 		if err != nil && !errors.Is(err, storage.ErrNotActiveOrRegistredUsers) {
@@ -71,18 +74,208 @@ func NewApplication() (*Application, error) {
 
 func (a *Application) initCLI() {
 	a.cli = cli.App{
-		Name:     "gophkeep",
-		Version:  "v1.0.0",
-		Compiled: time.Now(),
-		Usage:    "Use for send your data to gokeep server",
+		Name:         "gophkeep",
+		Version:      "v1.0.0",
+		Compiled:     time.Now(),
+		BashComplete: cli.DefaultAppComplete,
+		Usage:        "Use for send your data to gokeep server",
 		Commands: []*cli.Command{
 			a.makeConfigCmd(),
 			a.makeRegisterCmd(),
-			a.makeCreateFileCmd(),
-			a.makeGetDataCmd(),
+			a.makeDataCmd(),
+		},
+	}
+}
+
+func (a *Application) makeWalletCmd() *cli.Command {
+	return &cli.Command{
+		Name:   "wallet",
+		Usage:  "Operations with bank's cards",
+		Before: a.checkConfig,
+		Subcommands: []*cli.Command{
+			a.makeCreateCardCmd(),
+			a.makeDeleteCardCmd(),
+			a.makeListCardCmd(),
+		},
+	}
+}
+
+func (a *Application) makeCreateCardCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "create",
+		Usage: "Create new card",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "number"},
+			&cli.StringFlag{Name: "expiration", Usage: fmt.Sprintf("Data in format: %s", storage.ExpirationFormat)},
+			&cli.StringFlag{Name: "cvv"},
+			&cli.StringFlag{Name: "owner"},
+		},
+		Action: a.createCardCmdHandler,
+	}
+}
+
+func (a *Application) createCardCmdHandler(ctx *cli.Context) error {
+	card, err := makeBankCardFromArgs(ctx)
+	if err != nil {
+		return fmt.Errorf("Can't create card: %s", err)
+	}
+
+	return a.storage.CreateCard(a.user, card)
+}
+
+func makeBankCardFromArgs(ctx *cli.Context) (*storage.BankCard, error) {
+	number, ok := validateCardNumber(ctx.String("number"))
+	if !ok {
+		return nil, errors.New("bad card's number")
+	}
+
+	exp, ok := validateExpDate(ctx.String("expiration"))
+	if !ok {
+		return nil, errors.New("bad expiration date")
+	}
+
+	cvv, ok := validateCvvCode(ctx.String("cvv"))
+	if !ok {
+		return nil, errors.New("bad card's cvv")
+	}
+
+	owner, ok := validateCardOwner("owner")
+	if !ok {
+		return nil, errors.New("bad card owner name")
+	}
+
+	return &storage.BankCard{
+		Number:     number,
+		ExpiryDate: exp,
+		Owner:      owner,
+		CvvCode:    cvv,
+	}, nil
+}
+
+// format: "IVAN PETROV"
+func validateCardOwner(owner string) (string, bool) {
+	findSpace := false
+
+	for _, r := range owner {
+		if unicode.IsLetter(r) {
+			continue
+		}
+
+		if unicode.IsSpace(r) {
+			if findSpace {
+				return "", false
+			}
+
+			findSpace = true
+			continue
+		}
+
+		return "", false
+	}
+
+	if !findSpace {
+		return "", false
+	}
+
+	return owner, true
+}
+
+func validateExpDate(date string) (time.Time, bool) {
+	exp, err := time.Parse(storage.ExpirationFormat, date)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	return exp, true
+}
+
+func validateCvvCode(cvvCode string) (string, bool) {
+	if len(cvvCode) != 3 {
+		return "", false
+	}
+
+	for _, r := range cvvCode {
+		if !unicode.IsDigit(r) {
+			return "", false
+		}
+	}
+
+	return cvvCode, true
+}
+
+func validateCardNumber(number string) (string, bool) {
+	// number validation
+	validatedNumber := make([]byte, 0, 16)
+	for _, r := range number {
+		if r < 255 && unicode.IsDigit(r) {
+			validatedNumber = append(validatedNumber, byte(r))
+		} else if unicode.IsSpace(r) {
+			continue
+		}
+
+		return "", false
+	}
+
+	if len(validatedNumber) != 16 {
+		return "", false
+	}
+
+	return string(validatedNumber), true
+}
+
+func (a *Application) makeDeleteCardCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "delete",
+		Usage: "Delete card",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "number"},
+		},
+		Action: a.deleteCardCmdHandler,
+	}
+}
+
+func (a *Application) deleteCardCmdHandler(ctx *cli.Context) error {
+	number, ok := validateCardNumber(ctx.String("number"))
+	if !ok {
+		return errors.New("bad card number")
+	}
+
+	// TODO: add deletion on server
+
+	return a.storage.DeleteCard(a.user, number)
+}
+
+func (a *Application) listCardCmdHandler(ctx *cli.Context) error {
+	list, err := a.storage.ListCard(a.user)
+	if err != nil {
+		return err
+	}
+
+	for _, card := range list {
+		fmt.Printf("%s %s %v (%s)", card.Owner, card.Number, card.ExpiryDate.Format(storage.ExpirationFormat), card.CvvCode)
+	}
+
+	return nil
+}
+
+func (a *Application) makeListCardCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "list",
+		Usage: "List with all user cards",
+	}
+}
+
+func (a *Application) makeDataCmd() *cli.Command {
+	return &cli.Command{
+		Name:   "data",
+		Usage:  "Operations with text or binary data",
+		Before: a.checkConfig,
+		Subcommands: []*cli.Command{
+			a.makeCreateCmd(),
+			a.makeGetCmd(),
 			a.makeListCmd(),
-			a.makeUpdateFileCmd(),
-			a.makeDeleteBinaryDataCmd(),
+			a.makeUpdateCmd(),
+			a.makeDeleteCmd(),
 		},
 	}
 }
@@ -102,7 +295,6 @@ func (a *Application) makeConfigCmd() *cli.Command {
 				Usage: "Database's file's name",
 			},
 		},
-		Before: a.checkConfig,
 		Action: a.configCmdHandler,
 	}
 }
@@ -183,11 +375,10 @@ func vecFromUser(crypto *gophcrypto.Cryptographer, u *storage.User) []byte {
 	return vec
 }
 
-func (a *Application) makeCreateFileCmd() *cli.Command {
+func (a *Application) makeCreateCmd() *cli.Command {
 	return &cli.Command{
-		Name:    "create",
-		Aliases: []string{"c"},
-		Usage:   "Send new file to server",
+		Name:  "create",
+		Usage: "Send new file to server",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -196,18 +387,17 @@ func (a *Application) makeCreateFileCmd() *cli.Command {
 			},
 		},
 		Description: "Read file and send it to server",
-		Before:      a.checkConfig,
-		Action:      a.createFileCmdHander,
+		Action:      a.createCmdHander,
 	}
 }
 
-func (a *Application) createFileCmdHander(ctx *cli.Context) error {
+func (a *Application) createCmdHander(ctx *cli.Context) error {
 	r, err := a.readDataFromFileArg(ctx)
 	if err != nil {
 		return fmt.Errorf("read data from file, err=%w", err)
 	}
 
-	rev, err := a.storage.Save(a.user, r)
+	rev, err := a.storage.SaveData(a.user, r)
 	if err != nil {
 		return err
 	}
@@ -224,13 +414,11 @@ func (a *Application) createFileCmdHander(ctx *cli.Context) error {
 	return nil
 }
 
-func (a *Application) makeGetDataCmd() *cli.Command {
+func (a *Application) makeGetCmd() *cli.Command {
 	return &cli.Command{
-		Name:    "get",
-		Aliases: []string{"g"},
+		Name: "get",
 		// FIXME: по факту файл должен тянутся из локальной базы, для стягивания с сервера должна быть другая команда
-		Usage:  "Download file from server",
-		Before: a.checkConfig,
+		Usage: "Download file from server",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -271,16 +459,14 @@ func (a *Application) getDataCmdHandler(ctx *cli.Context) error {
 
 func (a *Application) makeListCmd() *cli.Command {
 	return &cli.Command{
-		Name:    "list",
-		Aliases: []string{"l"},
-		Usage:   "Print local data names and revisions",
-		Before:  a.checkConfig,
-		Action:  a.listCmdHandler,
+		Name:   "list",
+		Usage:  "Print local data names and revisions",
+		Action: a.listCmdHandler,
 	}
 }
 
 func (a *Application) listCmdHandler(ctx *cli.Context) error {
-	records, err := a.storage.List(a.user)
+	records, err := a.storage.ListData(a.user)
 	if err != nil {
 		return err
 	}
@@ -296,12 +482,10 @@ func (a *Application) listCmdHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func (a *Application) makeUpdateFileCmd() *cli.Command {
+func (a *Application) makeUpdateCmd() *cli.Command {
 	return &cli.Command{
-		Name:    "update",
-		Aliases: []string{"u"},
-		Usage:   "Update existed file on server",
-		Before:  a.checkConfig,
+		Name:  "update",
+		Usage: "Update existed data on server",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -310,20 +494,20 @@ func (a *Application) makeUpdateFileCmd() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:  "force",
-				Usage: "rewrite file on the server",
+				Usage: "update date",
 			},
 		},
-		Action: a.updateDataCmdHandler,
+		Action: a.updateCmdHandler,
 	}
 }
 
-func (a *Application) updateDataCmdHandler(ctx *cli.Context) error {
+func (a *Application) updateCmdHandler(ctx *cli.Context) error {
 	r, err := a.readDataFromFileArg(ctx)
 	if err != nil {
 		return err
 	}
 
-	rev, err := a.storage.Save(a.user, r)
+	rev, err := a.storage.SaveData(a.user, r)
 	if err != nil {
 		return nil
 	}
@@ -338,12 +522,11 @@ func (a *Application) updateDataCmdHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func (a *Application) makeDeleteBinaryDataCmd() *cli.Command {
+func (a *Application) makeDeleteCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "delete",
 		Aliases: []string{"d"},
-		Usage:   "Delete file on server",
-		Before:  a.checkConfig,
+		Usage:   "Delete data on server",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -351,30 +534,18 @@ func (a *Application) makeDeleteBinaryDataCmd() *cli.Command {
 				Usage:   "path to file",
 			},
 		},
+		Action: a.deleteBinaryDataCmdHandler,
 	}
 }
 
-// func (a *Application) delete
+func (a *Application) deleteBinaryDataCmdHandler(ctx *cli.Context) error {
+	r, err := a.readDataFromFileArg(ctx)
+	if err != nil {
+		return err
+	}
 
-// func (a *Application) makeEditFileCmd() *cli.Command {
-// 	return &cli.Command{
-// 		// TODO: должен запускать текстовый редактор с файлом и изменять ревизию
-// 		// {
-// 		// 	Name:  "edit",
-// 		// 	Usage: "Edit file",
-// 		// 	Flags: []cli.Flag{
-// 		// 		&cli.StringFlag{
-// 		// 			Name:    "file",
-// 		// 			Aliases: []string{"f"},
-// 		// 			Usage:   "path to file",
-// 		// 		},
-// 		// 	},
-// 		// 	Action: func(ctx *cli.Context) error {
-
-// 		// 	},
-// 		// },
-// 	}
-// }
+	return a.storage.DeleteData(a.user, r)
+}
 
 func (a *Application) checkConfig(ctx *cli.Context) error {
 	if a.config == nil {
@@ -461,15 +632,6 @@ func getPasswordArg(ctx *cli.Context) string {
 
 	return value
 }
-
-// func getOutputDirArg(ctx *cli.Context) string {
-// 	outputDir := ctx.String("output-dir")
-// 	if len(outputDir) == 0 {
-// 		outputDir = "."
-// 	}
-
-// 	return outputDir
-// }
 
 func generateKey() ([]byte, error) {
 	const keyLenDefault = aes.BlockSize

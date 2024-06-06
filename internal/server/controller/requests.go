@@ -30,7 +30,6 @@ const (
 		PRIMARY KEY ( "user", "key" )
 	);`
 
-	// TODO: реализовать проверку наличия зарегистрированного пользователя
 	addNewBinaryDataQuery = `INSERT INTO binary_data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
 	updateBinaryDataQuery = `UPDATE binary_data SET "value" = $3, revision = $4 WHERE "user" = $1 AND "key" = $2;`
 	getBinaryData         = `SELECT "value", "revision" FROM binary_data WHERE "user" = $1 AND "key" = $2;`
