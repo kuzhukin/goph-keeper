@@ -1,4 +1,4 @@
-package storage
+package sqlstorage
 
 import (
 	"database/sql"
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
+	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
+	"github.com/kuzhukin/goph-keeper/internal/client/storage"
 	"github.com/mattn/go-sqlite3"
 )
 
@@ -18,30 +20,9 @@ var (
 	ErrUserNotRegistred = errors.New("user isn't registred")
 )
 
-type Storage interface {
-	UserStorage
-	DataStorage
-	WalletStorage
-	Stop() error
-}
-
-type DataStorage interface {
-	SaveData(u *User, r *Record) (uint64, error)
-	LoadData(u *User, name string) (*Record, error)
-	ListData(u *User) ([]*Record, error)
-	DeleteData(u *User, r *Record) error
-}
-
-type UserStorage interface {
-	Register(login string, password string, cryptokey string) error
-	User() (*User, error)
-}
-
-type WalletStorage interface {
-	CreateCard(u *User, c *BankCard) error
-	ListCard(u *User) ([]*BankCard, error)
-	DeleteCard(u *User, cardNumber string) error
-}
+var _ storage.DataStorage = &DbStorage{}
+var _ storage.UserStorage = &DbStorage{}
+var _ storage.WalletStorage = &DbStorage{}
 
 type DbStorage struct {
 	db *sql.DB
@@ -144,7 +125,7 @@ func (s *DbStorage) changeCurrentUserStatus() error {
 		return nil
 	}
 
-	u := User{IsActive: true}
+	u := storage.User{IsActive: true}
 	if err = rows.Scan(&u.Login, &u.Password, &u.CryptoKey); err != nil {
 		return err
 	}
@@ -173,7 +154,7 @@ func isUniqueConstraint(err error) bool {
 
 var ErrNotActiveOrRegistredUsers = errors.New("don't have active or registred users")
 
-func (s *DbStorage) User() (*User, error) {
+func (s *DbStorage) GetActive() (*storage.User, error) {
 	query := prepareGetUserQuery()
 
 	rows, err := s.db.Query(query.request)
@@ -186,7 +167,7 @@ func (s *DbStorage) User() (*User, error) {
 		return nil, ErrNotActiveOrRegistredUsers
 	}
 
-	user := &User{IsActive: true}
+	user := &storage.User{IsActive: true}
 
 	cryptoKeyBase64 := ""
 
@@ -209,7 +190,7 @@ func (s *DbStorage) User() (*User, error) {
 	return user, nil
 }
 
-func (s *DbStorage) DeleteData(u *User, r *Record) error {
+func (s *DbStorage) DeleteData(u *storage.User, r *storage.Record) error {
 	q := prepareDeleteDataQuery(u.Login, r.Name)
 
 	_, err := s.db.Exec(q.request, q.args...)
@@ -217,7 +198,7 @@ func (s *DbStorage) DeleteData(u *User, r *Record) error {
 	return err
 }
 
-func (s *DbStorage) SaveData(u *User, r *Record) (uint64, error) {
+func (s *DbStorage) SaveData(u *storage.User, r *storage.Record) (uint64, error) {
 	rev, err := s.getRevision(u, r)
 	if err != nil {
 		if errors.Is(err, ErrDataNotExist) {
@@ -230,7 +211,7 @@ func (s *DbStorage) SaveData(u *User, r *Record) (uint64, error) {
 	return rev, s.updateData(u, r)
 }
 
-func (s *DbStorage) saveNewData(u *User, r *Record) error {
+func (s *DbStorage) saveNewData(u *storage.User, r *storage.Record) error {
 	q := prepareAddDataQuery(u.Login, r.Name, r.Data)
 
 	res, err := s.db.Exec(q.request, q.args...)
@@ -246,7 +227,7 @@ func (s *DbStorage) saveNewData(u *User, r *Record) error {
 	return nil
 }
 
-func (s *DbStorage) updateData(u *User, r *Record) error {
+func (s *DbStorage) updateData(u *storage.User, r *storage.Record) error {
 	q := prepareUpdateDataQuery(u.Login, r.Name, r.Data)
 
 	res, err := s.db.Exec(q.request, q.args...)
@@ -264,7 +245,7 @@ func (s *DbStorage) updateData(u *User, r *Record) error {
 
 var ErrDataNotExist = errors.New("data not exist")
 
-func (s *DbStorage) getRevision(u *User, r *Record) (uint64, error) {
+func (s *DbStorage) getRevision(u *storage.User, r *storage.Record) (uint64, error) {
 	query := preareGetRevisionQuery(u.Login, r.Name)
 
 	rows, err := s.db.Query(query.request, query.args...)
@@ -283,7 +264,7 @@ func (s *DbStorage) getRevision(u *User, r *Record) (uint64, error) {
 	return revision, err
 }
 
-func (s *DbStorage) LoadData(u *User, name string) (*Record, error) {
+func (s *DbStorage) LoadData(u *storage.User, name string) (*storage.Record, error) {
 	query := prepareGetDataQuery(u.Login, name)
 
 	rows, err := s.db.Query(query.request, query.args...)
@@ -296,7 +277,7 @@ func (s *DbStorage) LoadData(u *User, name string) (*Record, error) {
 		return nil, ErrDataNotExist
 	}
 
-	record := &Record{Name: name}
+	record := &storage.Record{Name: name}
 	err = rows.Scan(&record.Data, &record.Revision)
 	if err != nil {
 		return nil, err
@@ -305,7 +286,7 @@ func (s *DbStorage) LoadData(u *User, name string) (*Record, error) {
 	return record, nil
 }
 
-func (s *DbStorage) ListData(u *User) ([]*Record, error) {
+func (s *DbStorage) ListData(u *storage.User) ([]*storage.Record, error) {
 	query := prepareListDataQuery(u.Login)
 
 	rows, err := s.db.Query(query.request, query.args...)
@@ -315,10 +296,10 @@ func (s *DbStorage) ListData(u *User) ([]*Record, error) {
 
 	defer rows.Close()
 
-	records := []*Record{}
+	records := []*storage.Record{}
 
 	for rows.Next() {
-		r := Record{}
+		r := storage.Record{}
 		err = rows.Scan(&r.Name, &r.Data, &r.Revision)
 		if err != nil {
 			return nil, err
@@ -334,17 +315,93 @@ func (s *DbStorage) ListData(u *User) ([]*Record, error) {
 	return records, nil
 }
 
-// TODO:
-func (s *DbStorage) CreateCard(u *User, c *BankCard) error {
+func (s *DbStorage) CreateCard(u *storage.User, c *storage.BankCard) error {
+	data, err := serializeUserBankCard(u, c)
+	if err != nil {
+		return fmt.Errorf("serialize card err=%w", err)
+	}
+
+	query := prepareAddCard(u.Login, c.Number, data)
+
+	_, err = s.db.Exec(query.request, query.args...)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (s *DbStorage) DeleteCard(u *User, number string) error {
-	return nil
+func (s *DbStorage) DeleteCard(u *storage.User, number string) error {
+	query := prepareDeleteCard(u.Login, number)
+
+	_, err := s.db.Exec(query.request, query.args...)
+
+	return err
 }
 
-func (s *DbStorage) ListCard(u *User) ([]*BankCard, error) {
-	return []*BankCard{}, nil
+func (s *DbStorage) ListCard(u *storage.User) ([]*storage.BankCard, error) {
+	query := prepareListCard(u.Login)
+
+	rows, err := s.db.Query(query.request, query.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cards := make([]*storage.BankCard, 0, 10)
+
+	for rows.Next() {
+		data := ""
+		err := rows.Scan(data)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(data) == 0 {
+			return nil, errors.New("empty card data")
+		}
+
+		card, err := desirializeUserBankCard(u, data)
+		if err != nil {
+			return nil, fmt.Errorf("desirialize user's card's data err=%w", err)
+		}
+
+		cards = append(cards, card)
+	}
+
+	return cards, nil
+}
+
+func serializeUserBankCard(u *storage.User, c *storage.BankCard) (string, error) {
+	crypt, err := gophcrypto.New(u.CryptoKey)
+	if err != nil {
+		return "", err
+	}
+
+	serializer := NewSerializer(crypt)
+
+	data, err := serializer.SerializeBankCard(c)
+	if err != nil {
+		return "", nil
+	}
+
+	return data, nil
+}
+
+func desirializeUserBankCard(u *storage.User, data string) (*storage.BankCard, error) {
+	crypt, err := gophcrypto.New(u.CryptoKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serializer := NewSerializer(crypt)
+
+	card, err := serializer.DeserializeBankCard(data)
+	if err != nil {
+		return nil, nil
+	}
+
+	return card, nil
 }
 
 func (s *DbStorage) Stop() error {

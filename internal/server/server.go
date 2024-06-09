@@ -9,55 +9,39 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kuzhukin/goph-keeper/internal/server/config"
-	"github.com/kuzhukin/goph-keeper/internal/server/controller"
+	"github.com/kuzhukin/goph-keeper/internal/server/endpoint"
 	"github.com/kuzhukin/goph-keeper/internal/server/handler"
 	"github.com/kuzhukin/goph-keeper/internal/server/middleware"
+	"github.com/kuzhukin/goph-keeper/internal/server/sql"
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
-)
-
-// endpoints
-const (
-	// POST - registrer new user
-	RegisterEndpoint = "/api/user/register"
-	// POST - auth user
-	AuthEndpoint = "/api/user/auth"
-	// PUT - load new data to storage
-	// POST - update binary data to storage
-	// GET - get binary data from storage
-	// DELETE - delete item from storage
-	BinaryDataEndpoint = "/api/data/binary"
-	// PUT, POST, GET, DELETE
-	// Key = Value secret
-	SecretEndpoint = "/api/data/secret"
-	// PUT, POST, GET, DELETE
-	// card data
-	WalletEndpoint = "/api/data/wallet"
 )
 
 type Server struct {
 	httpServer http.Server
-	controller *controller.Controller
+	storage    *sql.Storage
 
 	wait chan struct{}
 }
 
 func StartNew(config *config.Config) (*Server, error) {
-	controller, err := controller.StartNewController(config.DataSourceName)
+	storage, err := sql.StartNewStorage(config.DataSourceName)
 	if err != nil {
-		return nil, fmt.Errorf("start db controller, err=%w", err)
+		return nil, fmt.Errorf("start db storage, err=%w", err)
 	}
 
 	router := chi.NewRouter()
 
 	router.Use(middleware.LoggingHTTPHandler)
 
-	router.Handle(BinaryDataEndpoint, handler.NewDataHandler(controller))
-	router.Handle(RegisterEndpoint, handler.NewRegistrationHandler(controller))
-	router.Handle(AuthEndpoint, handler.NewAuthenticationHandler(controller))
+	router.Handle(endpoint.BinaryDataEndpoint, handler.NewDataHandler(storage))
+	router.Handle(endpoint.RegisterEndpoint, handler.NewRegistrationHandler(storage))
+	router.Handle(endpoint.AuthEndpoint, handler.NewAuthenticationHandler(storage))
+	router.Handle(endpoint.WalletEndpoint, handler.NewWalletHandler(storage))
+	router.Handle(endpoint.SecretEndpoint, handler.NewSecretDataHandler(storage))
 
 	server := &Server{
 		httpServer: http.Server{Addr: config.Hostport, Handler: router},
-		controller: controller,
+		storage:    storage,
 		wait:       make(chan struct{}),
 	}
 
@@ -82,6 +66,8 @@ func (s *Server) start() {
 func (s *Server) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
+
+	s.storage.Stop()
 
 	return s.httpServer.Shutdown(ctx)
 }

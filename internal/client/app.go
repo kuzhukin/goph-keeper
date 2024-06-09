@@ -3,7 +3,6 @@ package client
 import (
 	"crypto/aes"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage"
+	"github.com/kuzhukin/goph-keeper/internal/client/storage/sqlstorage"
 	"github.com/urfave/cli/v2"
 )
 
@@ -48,15 +48,15 @@ func NewApplication() (*Application, error) {
 	if conf != nil {
 		app.config = conf
 
-		dbStorage, err := storage.StartNewDbStorage(conf.Database)
+		dbStorage, err := sqlstorage.StartNewDbStorage(conf.Database)
 		if err != nil {
 			return nil, err
 		}
 
 		app.storage = dbStorage
 
-		user, err := app.storage.User()
-		if err != nil && !errors.Is(err, storage.ErrNotActiveOrRegistredUsers) {
+		user, err := app.storage.GetActive()
+		if err != nil && !errors.Is(err, sqlstorage.ErrNotActiveOrRegistredUsers) {
 			return nil, err
 		}
 
@@ -348,12 +348,15 @@ func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 		return nil
 	}
 
-	crypto, err := gophcrypto.New(cryptoKey)
+	a.user = &storage.User{Login: login, IsActive: false, CryptoKey: cryptoKey}
+
+	crypto, err := gophcrypto.New(a.user.CryptoKey)
 	if err != nil {
 		return err
 	}
 
-	encryptedPassword := crypto.Encrypt([]byte(password), vecFromUser(crypto, a.user))
+	encryptedPassword := crypto.Encrypt([]byte(password))
+	a.user.Password = encryptedPassword
 
 	err = a.storage.Register(login, encryptedPassword, base64.RawStdEncoding.EncodeToString(cryptoKey))
 	if err != nil {
@@ -366,13 +369,6 @@ func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 	}
 
 	return nil
-}
-
-func vecFromUser(crypto *gophcrypto.Cryptographer, u *storage.User) []byte {
-	s := sha256.Sum256(u.CryptoKey)
-	vec := s[:crypto.VecLen()]
-
-	return vec
 }
 
 func (a *Application) makeCreateCmd() *cli.Command {
@@ -589,12 +585,12 @@ func (a *Application) readDataFromFileArg(ctx *cli.Context) (*storage.Record, er
 }
 
 func (a *Application) decryptUserData(data []byte) ([]byte, error) {
-	crypto, err := gophcrypto.New([]byte(a.user.CryptoKey))
+	crypto, err := gophcrypto.New(a.user.CryptoKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return crypto.Decrypt(data, vecFromUser(crypto, a.user))
+	return crypto.Decrypt(data)
 }
 
 func (a *Application) encryptUserData(data []byte) ([]byte, error) {
@@ -603,7 +599,7 @@ func (a *Application) encryptUserData(data []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return []byte(crypto.Encrypt(data, vecFromUser(crypto, a.user))), nil
+	return []byte(crypto.Encrypt(data)), nil
 }
 
 func getFileArg(ctx *cli.Context) string {

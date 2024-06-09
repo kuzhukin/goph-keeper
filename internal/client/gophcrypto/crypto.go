@@ -3,16 +3,18 @@ package gophcrypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 )
 
 type Cryptographer struct {
 	cipher cipher.AEAD
+	vector []byte
 }
 
-func New(key []byte) (*Cryptographer, error) {
-	aesblock, err := aes.NewCipher(key)
+func New(cryptoKey []byte) (*Cryptographer, error) {
+	aesblock, err := aes.NewCipher(cryptoKey)
 	if err != nil {
 		return nil, err
 	}
@@ -22,20 +24,19 @@ func New(key []byte) (*Cryptographer, error) {
 		return nil, err
 	}
 
-	return &Cryptographer{cipher: aesgcm}, nil
+	s := sha256.Sum256(cryptoKey)
+	vec := s[:aesgcm.NonceSize()]
+
+	return &Cryptographer{cipher: aesgcm, vector: vec}, nil
 }
 
-func (c *Cryptographer) VecLen() int {
-	return c.cipher.NonceSize()
-}
-
-func (c *Cryptographer) Encrypt(data []byte, vec []byte) string {
-	dst := c.cipher.Seal(nil, vec, data, nil)
+func (c *Cryptographer) Encrypt(data []byte) string {
+	dst := c.cipher.Seal(nil, c.vector, data, nil)
 
 	return base64.RawStdEncoding.EncodeToString(dst)
 }
 
-func (c *Cryptographer) Decrypt(base64data []byte, vec []byte) ([]byte, error) {
+func (c *Cryptographer) Decrypt(base64data []byte) ([]byte, error) {
 	data := make([]byte, base64.RawStdEncoding.DecodedLen(len(base64data)))
 
 	_, err := base64.RawStdEncoding.Decode(data, base64data)
@@ -43,7 +44,7 @@ func (c *Cryptographer) Decrypt(base64data []byte, vec []byte) ([]byte, error) {
 		return nil, fmt.Errorf("base64 decode err=%w", err)
 	}
 
-	dst, err := c.cipher.Open(nil, vec, data, nil)
+	dst, err := c.cipher.Open(nil, c.vector, data, nil)
 	if err != nil {
 		return nil, fmt.Errorf("decode err=%w", err)
 	}

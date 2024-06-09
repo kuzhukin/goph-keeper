@@ -10,7 +10,7 @@ import (
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage"
-	"github.com/kuzhukin/goph-keeper/internal/server"
+	"github.com/kuzhukin/goph-keeper/internal/server/endpoint"
 	"github.com/kuzhukin/goph-keeper/internal/server/handler"
 )
 
@@ -33,7 +33,7 @@ func (c *Client) Upload(u *storage.User, r *storage.Record) error {
 		Data: string(r.Data),
 	}
 
-	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
+	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
 	headers := map[string]string{
 		"Password": u.Password,
 	}
@@ -48,7 +48,7 @@ func (c *Client) Upload(u *storage.User, r *storage.Record) error {
 }
 
 func (c *Client) Download(u *storage.User, filename string) (*storage.Record, error) {
-	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
+	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
 	headers := map[string]string{
 		"Password": u.Password,
 	}
@@ -67,7 +67,7 @@ func (c *Client) Download(u *storage.User, filename string) (*storage.Record, er
 }
 
 func (c *Client) Register(login, password string) error {
-	uri := makeURI(c.hostport, server.RegisterEndpoint)
+	uri := makeURI(c.hostport, endpoint.RegisterEndpoint)
 
 	regstrationRequest := &handler.RegistrationRequest{
 		User:     login,
@@ -78,7 +78,7 @@ func (c *Client) Register(login, password string) error {
 }
 
 func (c *Client) Delete(login, password, dataKey string) error {
-	uri := makeURI(c.hostport, server.BinaryDataEndpoint)
+	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
 
 	deleteRequest := &handler.DeleteDataRequest{
 		User: login,

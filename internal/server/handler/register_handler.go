@@ -5,6 +5,7 @@ import (
 	"net/http"
 )
 
+//go:generate mockgen -source=register_handler.go -destination=./mock_registrator.go -package=handler
 type Registrator interface {
 	Register(ctx context.Context, user string, password string) error
 }

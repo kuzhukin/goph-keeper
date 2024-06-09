@@ -19,11 +19,8 @@ func TestCrypto(t *testing.T) {
 	c, err := New(key)
 	require.NoError(t, err)
 
-	vec, err := generateRandom(c.VecLen())
-	require.NoError(t, err)
-
-	encrypted := c.Encrypt(data, vec)
-	decrypted, err := c.Decrypt([]byte(encrypted), vec)
+	encrypted := c.Encrypt(data)
+	decrypted, err := c.Decrypt([]byte(encrypted))
 	require.NoError(t, err)
 
 	fmt.Println("data", string(data))

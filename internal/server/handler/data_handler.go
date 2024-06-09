@@ -17,11 +17,19 @@ var (
 	ErrBadPassword      = errors.New("bad password")
 )
 
-type Storage interface {
-	Save(ctx context.Context, u *User, d *Data) error
-	Update(ctx context.Context, u *User, d *Data) error
-	Load(ctx context.Context, u *User, d string) (*Data, error)
-	Delete(ctx context.Context, u *User, d *Data) error
+//go:generate mockgen -source=data_handler.go -destination=./mock_data_storage.go -package=handler
+type DataStorage interface {
+	CreateData(ctx context.Context, u *User, r *Record) error
+	UpdateData(ctx context.Context, u *User, r *Record) error
+	LoadData(ctx context.Context, u *User, name string) (*Record, error)
+	ListData(ctx context.Context, u *User) ([]*Record, error)
+	DeleteData(ctx context.Context, u *User, r *Record) error
+}
+
+type Record struct {
+	Name     string
+	Data     string
+	Revision uint64
 }
 
 type User struct {
@@ -29,18 +37,11 @@ type User struct {
 	Password string
 }
 
-type Data struct {
-	Key      string
-	Data     string
-	Revision uint64
-	Metainfo string
-}
-
 type DataHandler struct {
-	storage Storage
+	storage DataStorage
 }
 
-func NewDataHandler(storage Storage) *DataHandler {
+func NewDataHandler(storage DataStorage) *DataHandler {
 	return &DataHandler{storage: storage}
 }
 
@@ -83,7 +84,7 @@ type GetDataResponse struct {
 
 func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) error {
 	req, err := readRequest[*GetDataRequest](r)
-	if err != nil || len(req.Key) == 0 {
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return err
 	}
@@ -97,14 +98,14 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) erro
 
 	user := &User{Login: req.User, Password: password}
 
-	data, err := h.storage.Load(r.Context(), user, req.Key)
+	data, err := h.storage.LoadData(r.Context(), user, req.Key)
 	if err != nil {
 		responsestorageError(w, err)
 		return err
 	}
 
 	response := GetDataResponse{
-		Key:      data.Key,
+		Key:      data.Name,
 		Data:     data.Data,
 		Revision: data.Revision,
 	}
@@ -128,7 +129,7 @@ func (r *SaveDataRequest) Validate() bool {
 
 func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) error {
 	req, err := readRequest[*SaveDataRequest](r)
-	if err != nil || len(req.Key) == 0 || len(req.Data) == 0 {
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
 		return err
@@ -142,9 +143,9 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) err
 	}
 
 	user := &User{Login: req.User, Password: password}
-	data := &Data{Key: req.Key, Data: req.Data}
+	data := &Record{Name: req.Key, Data: req.Data}
 
-	if err := h.storage.Save(r.Context(), user, data); err != nil {
+	if err = h.storage.CreateData(r.Context(), user, data); err != nil {
 
 		responsestorageError(w, err)
 
@@ -156,34 +157,20 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) err
 	return nil
 }
 
-type UpdateDataMode int
-
-const (
-	SyncUpdateDataMode  UpdateDataMode = 1
-	ForceUpdateDataMode UpdateDataMode = 2
-)
-
 type UpdateDataRequest struct {
-	User     string         `json:"user"`
-	Key      string         `json:"key"`
-	Data     string         `json:"data"`
-	Revision uint64         `json:"revision"`
-	Mode     UpdateDataMode `json:"updateDataMode,omitempty"`
+	User     string `json:"user"`
+	Key      string `json:"key"`
+	Data     string `json:"data"`
+	Revision uint64 `json:"revision"`
 }
 
 func (r *UpdateDataRequest) Validate() bool {
-	switch r.Mode {
-	case SyncUpdateDataMode, ForceUpdateDataMode:
-	default:
-		r.Mode = SyncUpdateDataMode
-	}
-
 	return len(r.Key) > 0 && len(r.Data) > 0 && r.Revision != 0
 }
 
 func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) error {
 	req, err := readRequest[*UpdateDataRequest](r)
-	if err != nil || len(req.Key) == 0 || len(req.Data) == 0 {
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
 		return err
@@ -197,9 +184,9 @@ func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) e
 	}
 
 	user := &User{Login: req.User, Password: password}
-	data := &Data{Key: req.Key, Data: req.Data, Revision: req.Revision}
+	data := &Record{Name: req.Key, Data: req.Data, Revision: req.Revision}
 
-	if err := h.storage.Update(r.Context(), user, data); err != nil {
+	if err := h.storage.UpdateData(r.Context(), user, data); err != nil {
 		responsestorageError(w, err)
 
 		return err
@@ -221,7 +208,7 @@ func (r *DeleteDataRequest) Validate() bool {
 
 func (h *DataHandler) handleDeleteData(w http.ResponseWriter, r *http.Request) error {
 	req, err := readRequest[*DeleteDataRequest](r)
-	if err != nil || len(req.Key) == 0 {
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
 		return err
@@ -235,9 +222,9 @@ func (h *DataHandler) handleDeleteData(w http.ResponseWriter, r *http.Request) e
 	}
 
 	user := &User{Login: req.User, Password: password}
-	data := &Data{Key: req.Key}
+	data := &Record{Name: req.Key}
 
-	if err := h.storage.Delete(r.Context(), user, data); err != nil {
+	if err := h.storage.DeleteData(r.Context(), user, data); err != nil {
 		responsestorageError(w, err)
 
 		return err
@@ -257,7 +244,7 @@ func responsestorageError(w http.ResponseWriter, err error) {
 		w.WriteHeader(http.StatusNotFound)
 	} else if errors.Is(err, ErrDataAlreadyExist) {
 		w.WriteHeader(http.StatusConflict)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
 	}
-
-	w.WriteHeader(http.StatusInternalServerError)
 }
