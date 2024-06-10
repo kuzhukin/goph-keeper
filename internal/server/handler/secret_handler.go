@@ -50,12 +50,11 @@ func (h *SecretDataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type GetSecretDataRequest struct {
-	User string `json:"user"`
-	Key  string `json:"key"`
+	Key string `json:"key"`
 }
 
 func (r *GetSecretDataRequest) Validate() bool {
-	return len(r.User) > 0 && len(r.Key) > 0
+	return len(r.Key) > 0
 }
 
 type GetSecretResponse struct {
@@ -70,14 +69,7 @@ func (h *SecretDataHandler) handleGetData(w http.ResponseWriter, r *http.Request
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
+	user := getUserFromRequestContext(r)
 
 	secret, err := h.storage.GetSecret(r.Context(), user, req.Key)
 	if err != nil {
@@ -98,13 +90,12 @@ func (h *SecretDataHandler) handleGetData(w http.ResponseWriter, r *http.Request
 }
 
 type SaveSecretRequest struct {
-	User  string `json:"user"`
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
 
 func (r *SaveSecretRequest) Validate() bool {
-	return len(r.User) > 0 && len(r.Key) > 0 && len(r.Value) > 0
+	return len(r.Key) > 0 && len(r.Value) > 0
 }
 
 func (h *SecretDataHandler) handleSaveSecret(w http.ResponseWriter, r *http.Request) error {
@@ -115,14 +106,8 @@ func (h *SecretDataHandler) handleSaveSecret(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	user := getUserFromRequestContext(r)
 
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
 	secret := &Secret{Key: req.Key, Value: req.Value}
 
 	if err = h.storage.CreateSecret(r.Context(), user, secret); err != nil {
@@ -138,8 +123,7 @@ func (h *SecretDataHandler) handleSaveSecret(w http.ResponseWriter, r *http.Requ
 }
 
 type DeleteSecretRequest struct {
-	User string `json:"user"`
-	Key  string `json:"key"`
+	Key string `json:"key"`
 }
 
 func (r *DeleteSecretRequest) Validate() bool {
@@ -154,14 +138,7 @@ func (h *SecretDataHandler) handleDeleteSecret(w http.ResponseWriter, r *http.Re
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
+	user := getUserFromRequestContext(r)
 
 	if err := h.storage.DeleteSecret(r.Context(), user, req.Key); err != nil {
 		responsestorageError(w, err)

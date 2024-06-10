@@ -3,7 +3,7 @@ package sqlstorage
 const (
 	createCardTableQuery = `CREATE TABLE IF NOT EXISTS cards (
 		"user"			text		NOT_NULL,
-		"number			text		NOT NULL,
+		"number"		text		NOT NULL,
 		"data"			text		NOT NULL,
 		PRIMARY KEY ( "user", "number" )
 	);`

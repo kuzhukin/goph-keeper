@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,15 +20,15 @@ func TestSecretHandlerCreate(t *testing.T) {
 	mockSecretStorage := NewMockSecretStorage(ctrl)
 	h := NewSecretDataHandler(mockSecretStorage)
 
-	req := SaveSecretRequest{User: "user", Key: "key", Value: "value"}
+	req := SaveSecretRequest{Key: "key", Value: "value"}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodPut, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
+	user := &User{Login: "user", Password: "1234"}
 	secret := &Secret{Key: "key", Value: "value"}
 	mockSecretStorage.EXPECT().CreateSecret(gomock.Any(), user, secret).Return(nil)
 
@@ -42,15 +43,15 @@ func TestSecretHandlerGet(t *testing.T) {
 	mockSecretStorage := NewMockSecretStorage(ctrl)
 	h := NewSecretDataHandler(mockSecretStorage)
 
-	req := SaveSecretRequest{User: "user", Key: "key", Value: "value"}
+	req := SaveSecretRequest{Key: "key", Value: "value"}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodGet, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
+	user := &User{Login: "user", Password: "1234"}
 	secret := &Secret{Key: "key", Value: "value"}
 	mockSecretStorage.EXPECT().GetSecret(gomock.Any(), user, "key").Return(secret, nil)
 
@@ -73,15 +74,15 @@ func TestSecretHandlerDelete(t *testing.T) {
 	mockSecretStorage := NewMockSecretStorage(ctrl)
 	h := NewSecretDataHandler(mockSecretStorage)
 
-	req := DeleteSecretRequest{User: "user", Key: "key"}
+	req := DeleteSecretRequest{Key: "key"}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodDelete, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
+	user := &User{Login: "user", Password: "1234"}
 	mockSecretStorage.EXPECT().DeleteSecret(gomock.Any(), user, "key").Return(nil)
 
 	h.ServeHTTP(w, r)

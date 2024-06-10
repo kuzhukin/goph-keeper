@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,15 +20,15 @@ func TestDataHandlerGetData(t *testing.T) {
 	mockStorage := NewMockDataStorage(ctrl)
 	h := NewDataHandler(mockStorage)
 
-	req := GetDataRequest{User: "user", Key: "key"}
+	req := GetDataRequest{Key: "key"}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodGet, endpoint.BinaryDataEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
+	user := &User{Login: "user", Password: "1234"}
 	mockStorage.EXPECT().LoadData(gomock.Any(), user, req.Key).Return(&Record{Name: req.Key, Data: "user data", Revision: 1}, nil)
 
 	h.ServeHTTP(w, r)
@@ -50,15 +51,15 @@ func TestDataHandlerPutData(t *testing.T) {
 	mockStorage := NewMockDataStorage(ctrl)
 	h := NewDataHandler(mockStorage)
 
-	req := &SaveDataRequest{User: "user", Key: "key", Data: "user_data"}
+	req := &SaveDataRequest{Key: "key", Data: "user_data"}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodPost, endpoint.BinaryDataEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
+	user := &User{Login: "user", Password: "1234"}
 	rec := &Record{Name: req.Key, Data: req.Data}
 	mockStorage.EXPECT().CreateData(gomock.Any(), user, rec).Return(nil)
 
@@ -78,7 +79,7 @@ func TestDataHandlerUpdateData(t *testing.T) {
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodPut, endpoint.BinaryDataEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
 	user := &User{Login: req.User, Password: "1234"}
@@ -96,15 +97,15 @@ func TestDataHandlerDeleteData(t *testing.T) {
 	mockStorage := NewMockDataStorage(ctrl)
 	h := NewDataHandler(mockStorage)
 
-	req := &DeleteDataRequest{User: "user", Key: "key"}
+	req := &DeleteDataRequest{Key: "key"}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodDelete, endpoint.BinaryDataEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
+	user := &User{Login: "user", Password: "1234"}
 	rec := &Record{Name: req.Key}
 	mockStorage.EXPECT().DeleteData(gomock.Any(), user, rec).Return(nil)
 

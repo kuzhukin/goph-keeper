@@ -28,14 +28,14 @@ func newClient(config *config.Config) *Client {
 
 func (c *Client) UploadBinaryData(u *storage.User, r *storage.Record) error {
 	saveDataRequest := handler.SaveDataRequest{
-		User: u.Login,
 		Key:  r.Name,
 		Data: string(r.Data),
 	}
 
 	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
 	headers := map[string]string{
-		"Password": u.Password,
+		"login":    u.Login,
+		"password": u.Password,
 	}
 
 	return requestAndHandle(uri, http.MethodPost, headers, saveDataRequest, func(r *http.Response) error {
@@ -50,12 +50,12 @@ func (c *Client) UploadBinaryData(u *storage.User, r *storage.Record) error {
 func (c *Client) DownloadBinaryData(u *storage.User, dataKey string) (*storage.Record, error) {
 	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
 	headers := map[string]string{
-		"Password": u.Password,
+		"login":    u.Login,
+		"password": u.Password,
 	}
 
 	getDataRequest := &handler.GetDataRequest{
-		User: u.Login,
-		Key:  dataKey,
+		Key: dataKey,
 	}
 
 	resp, err := requestAndParse[handler.GetDataResponse](uri, http.MethodGet, headers, getDataRequest)
@@ -107,9 +107,7 @@ func (c *Client) DeleteCardData(login, password string, cardNumber string) error
 func (c *Client) ListCardData(login, password string) ([]*handler.CardData, error) {
 	uri := makeURI(c.hostport, endpoint.WalletEndpoint)
 
-	getRequest := &handler.GetDataRequest{User: login}
-
-	resp, err := requestAndParse[handler.GetCardsResponse](uri, http.MethodGet, map[string]string{password: password}, getRequest)
+	resp, err := requestAndParse[handler.GetCardsResponse](uri, http.MethodGet, map[string]string{"login": login, "password": password}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -120,25 +118,23 @@ func (c *Client) ListCardData(login, password string) ([]*handler.CardData, erro
 func (c *Client) CreateSecret(login, password string, secretName string, secretData string) error {
 	uri := makeURI(c.hostport, endpoint.SecretEndpoint)
 
-	saveRequest := &handler.SaveSecretRequest{User: login, Key: secretName, Value: secretData}
+	saveRequest := &handler.SaveSecretRequest{Key: secretName, Value: secretData}
 
-	return request(uri, http.MethodPut, map[string]string{password: password}, saveRequest)
+	return request(uri, http.MethodPut, map[string]string{"login": login, "password": password}, saveRequest)
 }
 
 func (c *Client) DeleteSecret(login, password string, secretKey string) error {
 	uri := makeURI(c.hostport, endpoint.SecretEndpoint)
 
-	saveRequest := &handler.DeleteSecretRequest{User: login, Key: secretKey}
+	saveRequest := &handler.DeleteSecretRequest{Key: secretKey}
 
-	return request(uri, http.MethodPut, map[string]string{password: password}, saveRequest)
+	return request(uri, http.MethodPut, map[string]string{"login": login, "password": password}, saveRequest)
 }
 
 func (c *Client) GetSecret(login, password string) (*storage.Secret, error) {
 	uri := makeURI(c.hostport, endpoint.SecretEndpoint)
 
-	getRequest := &handler.GetSecretDataRequest{User: login}
-
-	resp, err := requestAndParse[handler.GetSecretResponse](uri, http.MethodGet, map[string]string{password: password}, getRequest)
+	resp, err := requestAndParse[handler.GetSecretResponse](uri, http.MethodGet, map[string]string{"login": login, "password": password}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -225,12 +221,18 @@ func makeRequest(
 	additionalHeaders map[string]string,
 	msg any,
 ) (*http.Request, error) {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return nil, err
+	var body io.Reader
+
+	if msg != nil {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			return nil, err
+		}
+
+		body = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequest(method, uri, bytes.NewReader(data))
+	req, err := http.NewRequest(method, uri, body)
 	if err != nil {
 		return nil, err
 	}

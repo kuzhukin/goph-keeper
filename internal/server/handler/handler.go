@@ -53,3 +53,7 @@ func writeResponse[T any](w http.ResponseWriter, response T) error {
 
 	return nil
 }
+
+func getUserFromRequestContext(r *http.Request) *User {
+	return (r.Context().Value("auth")).(*User)
+}

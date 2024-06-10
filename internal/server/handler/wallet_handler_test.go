@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -29,7 +30,7 @@ func TestWalletHandlerAddCard(t *testing.T) {
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodPut, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
 	user := &User{Login: req.User, Password: "1234"}
@@ -47,15 +48,11 @@ func TestWalletHandlerListCard(t *testing.T) {
 	mockWalletStorage := NewMockWalletStorage(ctrl)
 	h := NewWalletHandler(mockWalletStorage)
 
-	req := GetCardsRequest{User: "user"}
-	data, err := json.Marshal(req)
-	require.NoError(t, err)
-
-	r := httptest.NewRequest(http.MethodGet, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r := httptest.NewRequest(http.MethodGet, endpoint.WalletEndpoint, nil)
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
+	user := &User{Login: "user", Password: "1234"}
 	expectedList := []*CardData{{"1234", "xxxx"}, {"1234", "yyyy"}}
 	mockWalletStorage.EXPECT().ListCard(gomock.Any(), user).Return(expectedList, nil)
 
@@ -63,7 +60,7 @@ func TestWalletHandlerListCard(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	resp := &GetCardsResponse{}
-	err = json.Unmarshal(w.Body.Bytes(), resp)
+	err := json.Unmarshal(w.Body.Bytes(), resp)
 	require.NoError(t, err)
 
 	require.Equal(t, expectedList, resp.Cards)
@@ -81,7 +78,7 @@ func TestWalletHandlerDeleteCard(t *testing.T) {
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodDelete, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r.Header = map[string][]string{"Password": {"1234"}}
+	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
 	user := &User{Login: req.User, Password: "1234"}

@@ -68,12 +68,11 @@ func (h *DataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type GetDataRequest struct {
-	User string `json:"user"`
-	Key  string `json:"key"`
+	Key string `json:"key"`
 }
 
 func (r *GetDataRequest) Validate() bool {
-	return len(r.User) > 0 && len(r.Key) > 0
+	return len(r.Key) > 0
 }
 
 type GetDataResponse struct {
@@ -89,14 +88,7 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
+	user := getUserFromRequestContext(r)
 
 	data, err := h.storage.LoadData(r.Context(), user, req.Key)
 	if err != nil {
@@ -118,13 +110,12 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) erro
 }
 
 type SaveDataRequest struct {
-	User string `json:"user"`
 	Key  string `json:"key"`
 	Data string `json:"data"`
 }
 
 func (r *SaveDataRequest) Validate() bool {
-	return len(r.User) > 0 && len(r.Key) > 0 && len(r.Data) > 0
+	return len(r.Key) > 0 && len(r.Data) > 0
 }
 
 func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) error {
@@ -135,14 +126,7 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
+	user := getUserFromRequestContext(r)
 	data := &Record{Name: req.Key, Data: req.Data}
 
 	if err = h.storage.CreateData(r.Context(), user, data); err != nil {
@@ -176,14 +160,7 @@ func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
+	user := getUserFromRequestContext(r)
 	data := &Record{Name: req.Key, Data: req.Data, Revision: req.Revision}
 
 	if err := h.storage.UpdateData(r.Context(), user, data); err != nil {
@@ -198,8 +175,7 @@ func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) e
 }
 
 type DeleteDataRequest struct {
-	User string `json:"user"`
-	Key  string `json:"key"`
+	Key string `json:"key"`
 }
 
 func (r *DeleteDataRequest) Validate() bool {
@@ -214,14 +190,8 @@ func (h *DataHandler) handleDeleteData(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	user := getUserFromRequestContext(r)
 
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
 	data := &Record{Name: req.Key}
 
 	if err := h.storage.DeleteData(r.Context(), user, data); err != nil {

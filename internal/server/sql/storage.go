@@ -76,6 +76,34 @@ func (c *Storage) exec(query string) error {
 	return nil
 }
 
+func (c *Storage) Check(ctx context.Context, login, password string) error {
+	userQuery := prepareGetUserQuery(login)
+
+	rows, err := doQuery(ctx, func(ctx context.Context) (*sql.Rows, error) {
+		return c.db.QueryContext(ctx, userQuery.request, userQuery.args...)
+	})
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	storedUser := &handler.User{}
+
+	if !rows.Next() {
+		return handler.ErrUnknownUser
+	}
+
+	if err := rows.Scan(&storedUser.Login, &storedUser.Password); err != nil {
+		return err
+	}
+
+	if storedUser.Password != password {
+		return handler.ErrUnknownUser
+	}
+
+	return nil
+}
+
 func (c *Storage) CreateData(ctx context.Context, u *handler.User, d *handler.Record) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
@@ -85,10 +113,6 @@ func (c *Storage) CreateData(ctx context.Context, u *handler.User, d *handler.Re
 		return err
 	}
 	defer recoverAndRollBack(tx)
-
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
-		return err
-	}
 
 	query := prepareNewDataQuery(u.Login, d.Name, d.Data)
 

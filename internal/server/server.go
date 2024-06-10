@@ -31,6 +31,8 @@ func StartNew(config *config.Config) (*Server, error) {
 
 	router := chi.NewRouter()
 
+	middleware.NewAuthMiddleware(storage)
+
 	router.Use(middleware.LoggingHTTPHandler)
 
 	router.Handle(endpoint.BinaryDataEndpoint, handler.NewDataHandler(storage))

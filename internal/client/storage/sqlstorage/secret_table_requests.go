@@ -5,7 +5,7 @@ const (
 		"user"			text		NOT_NULL,
 		"name"			text		NOT_NULL,
 		"secret"		text		NOT NULL,
-		PRIMARY KEY ( "user", "key" )
+		PRIMARY KEY ( "user", "name" )
 	);`
 
 	addSecretQuery    = `INSERT INTO secrets ("user", "name", "secret") VALUES ($1, $2, $3);`

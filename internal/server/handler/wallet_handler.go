@@ -47,34 +47,12 @@ func (h *WalletHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type GetCardsRequest struct {
-	User string `json:"user"`
-}
-
-func (r *GetCardsRequest) Validate() bool {
-	return len(r.User) > 0
-}
-
 type GetCardsResponse struct {
 	Cards []*CardData `json:"cards"`
 }
 
 func (h *WalletHandler) handleGetData(w http.ResponseWriter, r *http.Request) error {
-	req, err := readRequest[*GetCardsRequest](r)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-
-		return err
-	}
-
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
+	user := getUserFromRequestContext(r)
 
 	cards, err := h.storage.ListCard(r.Context(), user)
 	if err != nil {
@@ -112,14 +90,8 @@ func (h *WalletHandler) handleSaveData(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	user := getUserFromRequestContext(r)
 
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
 	card := &CardData{Number: req.CardNumber, Data: req.CardData}
 
 	if err := h.storage.CreateCard(r.Context(), user, card); err != nil {
@@ -151,15 +123,8 @@ func (h *WalletHandler) handleDeleteData(w http.ResponseWriter, r *http.Request)
 		return err
 	}
 
-	// FIXME: вынести авторизацию в мидлваре
-	password := r.Header.Get("password")
-	if len(password) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	user := getUserFromRequestContext(r)
 
-		return nil
-	}
-
-	user := &User{Login: req.User, Password: password}
 	data := &CardData{Number: req.CardNumber}
 
 	if err := h.storage.DeleteCard(r.Context(), user, data); err != nil {

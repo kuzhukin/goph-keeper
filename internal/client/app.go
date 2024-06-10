@@ -91,7 +91,7 @@ func (a *Application) initCLI() {
 
 func (a *Application) makeSecretCmd() *cli.Command {
 	return &cli.Command{
-		Name:   "wallet",
+		Name:   "secret",
 		Usage:  "Operations with bank's cards",
 		Before: a.checkConfig,
 		Subcommands: []*cli.Command{
