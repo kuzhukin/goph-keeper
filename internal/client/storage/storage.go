@@ -4,6 +4,7 @@ type Storage interface {
 	UserStorage
 	DataStorage
 	WalletStorage
+	SecretStorage
 	Stop() error
 }
 
@@ -20,7 +21,13 @@ type UserStorage interface {
 }
 
 type WalletStorage interface {
-	CreateCard(u *User, c *BankCard) error
+	CreateCard(u *User, c *BankCard) (string, error)
 	ListCard(u *User) ([]*BankCard, error)
 	DeleteCard(u *User, cardNumber string) error
+}
+
+type SecretStorage interface {
+	CreateSecret(u *User, s *Secret) (string, error)
+	GetSecret(u *User, secretKey string) (*Secret, error)
+	DeleteSecret(u *User, secretKey string) error
 }

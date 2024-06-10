@@ -83,21 +83,132 @@ func (a *Application) initCLI() {
 			a.makeConfigCmd(),
 			a.makeRegisterCmd(),
 			a.makeDataCmd(),
+			a.makeWalletCmd(),
+			a.makeSecretCmd(),
 		},
 	}
 }
 
-func (a *Application) makeWalletCmd() *cli.Command {
+func (a *Application) makeSecretCmd() *cli.Command {
 	return &cli.Command{
 		Name:   "wallet",
 		Usage:  "Operations with bank's cards",
 		Before: a.checkConfig,
 		Subcommands: []*cli.Command{
-			a.makeCreateCardCmd(),
-			a.makeDeleteCardCmd(),
-			a.makeListCardCmd(),
+			a.makeCreateSecretCmd(),
+			a.makeDeleteSecretCmd(),
+			a.makeGetSecretCmd(),
 		},
 	}
+}
+
+func (a *Application) makeCreateSecretCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "create",
+		Usage: "Create new secret",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "name"},
+			&cli.StringFlag{Name: "key"},
+			&cli.StringFlag{Name: "value"},
+		},
+		Action: a.createSecertCmdHandler,
+	}
+}
+
+func (a *Application) makeDeleteSecretCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "create",
+		Usage: "Create new secret",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "name"},
+		},
+		Action: a.deleteSecretCmdHandler,
+	}
+}
+
+func (a *Application) makeGetSecretCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "create",
+		Usage: "Create new secret",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "name"},
+		},
+		Action: a.getSecretCmdHandler,
+	}
+}
+
+func (a *Application) createSecertCmdHandler(ctx *cli.Context) error {
+	secret, err := makeSecretFromArgs(ctx)
+	if err != nil {
+		return fmt.Errorf("can't create card: %w", err)
+	}
+
+	cryptedSecret, err := a.storage.CreateSecret(a.user, secret)
+	if err != nil {
+		return err
+	}
+
+	if err = a.client.CreateSecret(a.user.Login, a.user.Password, secret.Name, cryptedSecret); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *Application) getSecretCmdHandler(ctx *cli.Context) error {
+	key := ctx.String("name")
+	if len(key) == 0 {
+		return errors.New("bad secret's name")
+	}
+
+	secret, err := a.storage.GetSecret(a.user, key)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("SECRET key: %s value: %s\n", secret.Key, secret.Value)
+
+	return nil
+}
+
+func (a *Application) deleteSecretCmdHandler(ctx *cli.Context) error {
+	key := ctx.String("name")
+	if len(key) == 0 {
+		return errors.New("bad secret's name")
+	}
+
+	// we are firstly deleting data on the server
+	if err := a.client.DeleteSecret(a.user.Login, a.user.Password, key); err != nil {
+		return err
+	}
+
+	if err := a.storage.DeleteSecret(a.user, key); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func makeSecretFromArgs(ctx *cli.Context) (*storage.Secret, error) {
+	name := ctx.String("name")
+	if len(name) == 0 {
+		return nil, errors.New("bad secret's name")
+	}
+
+	key := ctx.String("key")
+	if len(key) == 0 {
+		return nil, errors.New("bad secret's key")
+	}
+
+	value := ctx.String("bad secret's values")
+	if len(value) == 0 {
+		return nil, errors.New("bad secret's values")
+	}
+
+	return &storage.Secret{
+		Key:   key,
+		Value: value,
+	}, nil
 }
 
 func (a *Application) makeCreateCardCmd() *cli.Command {
@@ -114,13 +225,35 @@ func (a *Application) makeCreateCardCmd() *cli.Command {
 	}
 }
 
+func (a *Application) makeWalletCmd() *cli.Command {
+	return &cli.Command{
+		Name:   "wallet",
+		Usage:  "Operations with bank's cards",
+		Before: a.checkConfig,
+		Subcommands: []*cli.Command{
+			a.makeCreateCardCmd(),
+			a.makeDeleteCardCmd(),
+			a.makeListCardCmd(),
+		},
+	}
+}
+
 func (a *Application) createCardCmdHandler(ctx *cli.Context) error {
 	card, err := makeBankCardFromArgs(ctx)
 	if err != nil {
-		return fmt.Errorf("Can't create card: %s", err)
+		return fmt.Errorf("can't create card: %w", err)
 	}
 
-	return a.storage.CreateCard(a.user, card)
+	data, err := a.storage.CreateCard(a.user, card)
+	if err != nil {
+		return nil
+	}
+
+	if err = a.client.CreateCardData(a.user.Login, a.user.Password, card.Number, data); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func makeBankCardFromArgs(ctx *cli.Context) (*storage.BankCard, error) {
@@ -207,7 +340,7 @@ func validateCardNumber(number string) (string, bool) {
 	// number validation
 	validatedNumber := make([]byte, 0, 16)
 	for _, r := range number {
-		if r < 255 && unicode.IsDigit(r) {
+		if unicode.IsDigit(r) {
 			validatedNumber = append(validatedNumber, byte(r))
 		} else if unicode.IsSpace(r) {
 			continue
@@ -240,12 +373,18 @@ func (a *Application) deleteCardCmdHandler(ctx *cli.Context) error {
 		return errors.New("bad card number")
 	}
 
-	// TODO: add deletion on server
+	if err := a.storage.DeleteCard(a.user, number); err != nil {
+		return err
+	}
 
-	return a.storage.DeleteCard(a.user, number)
+	if err := a.client.DeleteCardData(a.user.Login, a.user.Password, number); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (a *Application) listCardCmdHandler(ctx *cli.Context) error {
+func (a *Application) listCardCmdHandler(_ *cli.Context) error {
 	list, err := a.storage.ListCard(a.user)
 	if err != nil {
 		return err
@@ -260,8 +399,9 @@ func (a *Application) listCardCmdHandler(ctx *cli.Context) error {
 
 func (a *Application) makeListCardCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "list",
-		Usage: "List with all user cards",
+		Name:   "list",
+		Usage:  "List with all user cards",
+		Action: a.listCardCmdHandler,
 	}
 }
 
@@ -363,7 +503,7 @@ func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 		return err
 	}
 
-	err = a.client.Register(login, encryptedPassword)
+	err = a.client.RegisterUser(login, encryptedPassword)
 	if err != nil {
 		return err
 	}
@@ -400,7 +540,7 @@ func (a *Application) createCmdHander(ctx *cli.Context) error {
 
 	r.Revision = rev
 
-	err = a.client.Upload(a.user, r)
+	err = a.client.UploadBinaryData(a.user, r)
 	if err != nil {
 		return err
 	}
@@ -434,7 +574,7 @@ func (a *Application) makeGetCmd() *cli.Command {
 func (a *Application) getDataCmdHandler(ctx *cli.Context) error {
 	filename := getFileArg(ctx)
 
-	file, err := a.client.Download(a.user, filename)
+	file, err := a.client.DownloadBinaryData(a.user, filename)
 	if err != nil {
 		fmt.Println(err)
 
@@ -510,7 +650,7 @@ func (a *Application) updateCmdHandler(ctx *cli.Context) error {
 
 	r.Revision = rev
 
-	err = a.client.Upload(a.user, r)
+	err = a.client.UploadBinaryData(a.user, r)
 	if err != nil {
 		return err
 	}

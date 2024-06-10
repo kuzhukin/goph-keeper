@@ -67,9 +67,10 @@ func (s *Server) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	s.storage.Stop()
-
-	return s.httpServer.Shutdown(ctx)
+	return errors.Join(
+		s.storage.Stop(),
+		s.httpServer.Shutdown(ctx),
+	)
 }
 
 func (s *Server) WaitStop() <-chan struct{} {

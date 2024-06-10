@@ -16,6 +16,7 @@ type User struct {
 }
 
 type Secret struct {
+	Name  string
 	Key   string
 	Value string
 }

@@ -56,6 +56,8 @@ func (s *DbStorage) initTables() error {
 	for _, t := range []string{
 		createDataTableQuery,
 		createUserTableQuery,
+		createCardTableQuery,
+		createSecretTableQuery,
 	} {
 		if _, err = s.db.Exec(t); err != nil {
 			fmt.Println("init table", t)
@@ -315,20 +317,20 @@ func (s *DbStorage) ListData(u *storage.User) ([]*storage.Record, error) {
 	return records, nil
 }
 
-func (s *DbStorage) CreateCard(u *storage.User, c *storage.BankCard) error {
+func (s *DbStorage) CreateCard(u *storage.User, c *storage.BankCard) (string, error) {
 	data, err := serializeUserBankCard(u, c)
 	if err != nil {
-		return fmt.Errorf("serialize card err=%w", err)
+		return "", fmt.Errorf("serialize card err=%w", err)
 	}
 
 	query := prepareAddCard(u.Login, c.Number, data)
 
 	_, err = s.db.Exec(query.request, query.args...)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return data, nil
 }
 
 func (s *DbStorage) DeleteCard(u *storage.User, number string) error {
@@ -402,6 +404,68 @@ func desirializeUserBankCard(u *storage.User, data string) (*storage.BankCard, e
 	}
 
 	return card, nil
+}
+
+func (s *DbStorage) CreateSecret(u *storage.User, secret *storage.Secret) (string, error) {
+	crypt, err := gophcrypto.New(u.CryptoKey)
+	if err != nil {
+		return "", err
+	}
+
+	serializer := NewSerializer(crypt)
+
+	cryptedSecret, err := serializer.SerializeSecret(secret)
+	if err != nil {
+		return "", err
+	}
+
+	q := prepareAddSecretQuery(u.Login, secret.Name, cryptedSecret)
+	_, err = s.db.Exec(q.request, q.args...)
+	if err != nil {
+		return "", err
+	}
+
+	return cryptedSecret, nil
+}
+
+func (s *DbStorage) GetSecret(u *storage.User, secretName string) (*storage.Secret, error) {
+	q := preareGetSecretQuery(u.Login, secretName)
+	rows, err := s.db.Query(q.request, q.args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, fmt.Errorf("secret %s isn't exist", secretName)
+	}
+
+	cryptedData := ""
+	if err = rows.Scan(&cryptedData); err != nil {
+		return nil, err
+	}
+
+	crypt, err := gophcrypto.New(u.CryptoKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serializer := NewSerializer(crypt)
+
+	secret, err := serializer.DeserializeSecret(cryptedData)
+	if err != nil {
+		return nil, err
+	}
+
+	return secret, nil
+}
+
+func (s *DbStorage) DeleteSecret(u *storage.User, secretKey string) error {
+	q := prepareDeleteSecretQuery(u.Login, secretKey)
+
+	_, err := s.db.Exec(q.request, q.args...)
+
+	return err
 }
 
 func (s *DbStorage) Stop() error {
