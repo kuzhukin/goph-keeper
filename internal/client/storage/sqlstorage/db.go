@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
@@ -208,7 +207,7 @@ var ErrAlreadyExist = errors.New("already exist")
 func (s *DbStorage) CreateData(u *storage.User, r *storage.Record) error {
 	err := s.saveNewData(u, r)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint") {
+		if isUniqueConstraint(err) {
 			return ErrAlreadyExist
 		}
 	}
@@ -328,6 +327,10 @@ func (s *DbStorage) CreateCard(u *storage.User, c *storage.BankCard) (string, er
 
 	_, err = s.db.Exec(query.request, query.args...)
 	if err != nil {
+		if isUniqueConstraint(err) {
+			return "", ErrAlreadyExist
+		}
+
 		return "", err
 	}
 
@@ -355,7 +358,7 @@ func (s *DbStorage) ListCard(u *storage.User) ([]*storage.BankCard, error) {
 
 	for rows.Next() {
 		data := ""
-		err := rows.Scan(data)
+		err := rows.Scan(&data)
 		if err != nil {
 			return nil, err
 		}
@@ -423,6 +426,10 @@ func (s *DbStorage) CreateSecret(u *storage.User, secret *storage.Secret) (strin
 	q := prepareAddSecretQuery(u.Login, secret.Name, cryptedSecret)
 	_, err = s.db.Exec(q.request, q.args...)
 	if err != nil {
+		if isUniqueConstraint(err) {
+			return cryptedSecret, ErrAlreadyExist
+		}
+
 		return "", err
 	}
 

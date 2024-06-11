@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-	"unicode"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
@@ -125,7 +124,7 @@ func (a *Application) makeCreateSecretCmd() *cli.Command {
 
 func (a *Application) makeDeleteSecretCmd() *cli.Command {
 	return &cli.Command{
-		Name:         "create",
+		Name:         "delete",
 		Usage:        "Create new secret",
 		BashComplete: cli.DefaultAppComplete,
 		Flags: []cli.Flag{
@@ -137,7 +136,7 @@ func (a *Application) makeDeleteSecretCmd() *cli.Command {
 
 func (a *Application) makeGetSecretCmd() *cli.Command {
 	return &cli.Command{
-		Name:         "create",
+		Name:         "get",
 		Usage:        "Create new secret",
 		BashComplete: cli.DefaultAppComplete,
 		Flags: []cli.Flag{
@@ -150,11 +149,11 @@ func (a *Application) makeGetSecretCmd() *cli.Command {
 func (a *Application) createSecertCmdHandler(ctx *cli.Context) error {
 	secret, err := makeSecretFromArgs(ctx)
 	if err != nil {
-		return fmt.Errorf("can't create card: %w", err)
+		return fmt.Errorf("can't create secret: %w", err)
 	}
 
 	cryptedSecret, err := a.storage.CreateSecret(a.user, secret)
-	if err != nil {
+	if err != nil && !errors.Is(err, sqlstorage.ErrAlreadyExist) {
 		return err
 	}
 
@@ -176,7 +175,7 @@ func (a *Application) getSecretCmdHandler(ctx *cli.Context) error {
 		return err
 	}
 
-	fmt.Printf("SECRET key: %s value: %s\n", secret.Key, secret.Value)
+	fmt.Printf("\tname: %s; key: %s; value: %s\n", secret.Name, secret.Key, secret.Value)
 
 	return nil
 }
@@ -210,12 +209,13 @@ func makeSecretFromArgs(ctx *cli.Context) (*storage.Secret, error) {
 		return nil, errors.New("bad secret's key")
 	}
 
-	value := ctx.String("bad secret's values")
+	value := ctx.String("value")
 	if len(value) == 0 {
-		return nil, errors.New("bad secret's values")
+		return nil, errors.New("bad secret's value")
 	}
 
 	return &storage.Secret{
+		Name:  name,
 		Key:   key,
 		Value: value,
 	}, nil
@@ -258,7 +258,7 @@ func (a *Application) createCardCmdHandler(ctx *cli.Context) error {
 
 	data, err := a.storage.CreateCard(a.user, card)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	if err = a.client.CreateCardData(a.user.Token, card.Number, data); err != nil {
@@ -281,10 +281,10 @@ func makeBankCardFromArgs(ctx *cli.Context) (*storage.BankCard, error) {
 
 	cvv, ok := validateCvvCode(ctx.String("cvv"))
 	if !ok {
-		return nil, errors.New("bad card's cvv")
+		return nil, fmt.Errorf("bad card's cvv=%s", ctx.String("cvv"))
 	}
 
-	owner, ok := validateCardOwner("owner")
+	owner, ok := validateCardOwner(ctx.String("owner"))
 	if !ok {
 		return nil, errors.New("bad card owner name")
 	}
@@ -295,79 +295,6 @@ func makeBankCardFromArgs(ctx *cli.Context) (*storage.BankCard, error) {
 		Owner:      owner,
 		CvvCode:    cvv,
 	}, nil
-}
-
-// format: "IVAN PETROV"
-func validateCardOwner(owner string) (string, bool) {
-	findSpace := false
-
-	for _, r := range owner {
-		if unicode.IsLetter(r) {
-			continue
-		}
-
-		if unicode.IsSpace(r) {
-			if findSpace {
-				return "", false
-			}
-
-			findSpace = true
-			continue
-		}
-
-		return "", false
-	}
-
-	if !findSpace {
-		return "", false
-	}
-
-	return owner, true
-}
-
-func validateExpDate(date string) (time.Time, bool) {
-	exp, err := time.Parse(storage.ExpirationFormat, date)
-	if err != nil {
-		return time.Time{}, false
-	}
-
-	return exp, true
-}
-
-func validateCvvCode(cvvCode string) (string, bool) {
-	if len(cvvCode) != 3 {
-		return "", false
-	}
-
-	for _, r := range cvvCode {
-		if !unicode.IsDigit(r) {
-			return "", false
-		}
-	}
-
-	return cvvCode, true
-}
-
-func validateCardNumber(number string) (string, bool) {
-	// number validation
-	validatedNumber := make([]byte, 0, 16)
-	for _, r := range number {
-		if unicode.IsDigit(r) {
-			validatedNumber = append(validatedNumber, byte(r))
-		} else if unicode.IsSpace(r) {
-			continue
-		}
-
-		return "", false
-	}
-
-	if len(validatedNumber) != 16 {
-		return "", false
-	}
-
-	validatedNumberStr := string(validatedNumber)
-
-	return validatedNumberStr, true
 }
 
 func (a *Application) makeDeleteCardCmd() *cli.Command {
@@ -407,7 +334,7 @@ func (a *Application) listCardCmdHandler(_ *cli.Context) error {
 	}
 
 	for _, card := range list {
-		fmt.Printf("%s %s %v (%s)", card.Owner, card.Number, card.ExpiryDate.Format(storage.ExpirationFormat), card.CvvCode)
+		fmt.Printf("holder: %s; num: %s; expiration: %v; cvv: %s\n", card.Owner, card.Number, card.ExpiryDate.Format(storage.ExpirationFormat), card.CvvCode)
 	}
 
 	return nil
@@ -506,7 +433,7 @@ func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 
 	cryptoKey, err := generateKey()
 	if err != nil {
-		return nil
+		return err
 	}
 
 	a.user = &storage.User{Login: login, IsActive: false, CryptoKey: cryptoKey}

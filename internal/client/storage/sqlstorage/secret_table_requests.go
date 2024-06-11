@@ -9,7 +9,7 @@ const (
 	);`
 
 	addSecretQuery    = `INSERT INTO secrets ("user", "name", "secret") VALUES ($1, $2, $3);`
-	getSecretQuery    = `SELECT "secret", FROM secrets WHERE "user" = $1 AND "name" = $2;`
+	getSecretQuery    = `SELECT "secret" FROM secrets WHERE "user" = $1 AND "name" = $2;`
 	deleteSecretQuery = `DELETE FROM secrets WHERE "user" = $1 AND "name" = $2;`
 )
 
