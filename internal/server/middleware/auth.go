@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/kuzhukin/goph-keeper/internal/server/endpoint"
 	"github.com/kuzhukin/goph-keeper/internal/server/handler"
+	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
 
 type AuthModdleware struct {
@@ -19,37 +21,58 @@ func NewAuthMiddleware(c UserChecker) *AuthModdleware {
 }
 
 type UserChecker interface {
-	Check(ctx context.Context, login, password string) error
+	Check(ctx context.Context, token string) error
 }
 
 func (a *AuthModdleware) Middleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		login := r.Header.Get("login")
-		if len(login) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
+		if r.URL.Path == endpoint.RegisterEndpoint {
+			login := r.Header.Get("login")
+			if len(login) == 0 {
+				zlog.Logger().Debug("headers don't have login field")
 
-			return
-		}
-
-		password := r.Header.Get("password")
-		if len(password) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-
-			return
-		}
-
-		if err := a.checker.Check(r.Context(), login, password); err != nil {
-			if errors.Is(err, handler.ErrUnknownUser) {
 				w.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
+
+			password := r.Header.Get("password")
+			if len(password) == 0 {
+				zlog.Logger().Debug("headers don't have password field")
+
+				w.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
+
+			ctxWithAuthInfo := context.WithValue(r.Context(), handler.AuthInfo("user"), &handler.User{Login: login, Password: password})
+
+			r = r.WithContext(ctxWithAuthInfo)
+
+			h.ServeHTTP(w, r)
+
+			return
+		}
+
+		token := r.Header.Get("token")
+		if len(token) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		ctxWithAuthInfo := context.WithValue(r.Context(), handler.AuthInfo("token"), token)
+		r = r.WithContext(ctxWithAuthInfo)
+
+		if err := a.checker.Check(r.Context(), token); err != nil {
+			if errors.Is(err, handler.ErrUnknownUser) {
+				w.WriteHeader(http.StatusUnauthorized)
 			} else {
 				w.WriteHeader(http.StatusInternalServerError)
 			}
 
 			return
 		}
-
-		ctxWithAuthInfo := context.WithValue(r.Context(), "auth", &handler.User{Login: login, Password: password})
-		r = r.WithContext(ctxWithAuthInfo)
 
 		h.ServeHTTP(w, r)
 	})

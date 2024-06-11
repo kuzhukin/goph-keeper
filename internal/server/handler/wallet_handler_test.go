@@ -25,17 +25,16 @@ func TestWalletHandlerAddCard(t *testing.T) {
 	mockWalletStorage := NewMockWalletStorage(ctrl)
 	h := NewWalletHandler(mockWalletStorage)
 
-	req := SaveCardDataRequest{User: "user", CardNumber: testCardNumber, CardData: testCardData}
+	req := SaveCardDataRequest{CardNumber: testCardNumber, CardData: testCardData}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodPut, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
 	card := &CardData{Number: req.CardNumber, Data: req.CardData}
-	mockWalletStorage.EXPECT().CreateCard(gomock.Any(), user, card).Return(nil)
+	mockWalletStorage.EXPECT().CreateCard(gomock.Any(), testToken, card).Return(nil)
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
@@ -46,15 +45,14 @@ func TestWalletHandlerListCard(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockWalletStorage := NewMockWalletStorage(ctrl)
-	h := NewWalletHandler(mockWalletStorage)
+	h := NewWalletListHandler(mockWalletStorage)
 
 	r := httptest.NewRequest(http.MethodGet, endpoint.WalletEndpoint, nil)
-	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: "user", Password: "1234"}
 	expectedList := []*CardData{{"1234", "xxxx"}, {"1234", "yyyy"}}
-	mockWalletStorage.EXPECT().ListCard(gomock.Any(), user).Return(expectedList, nil)
+	mockWalletStorage.EXPECT().ListCard(gomock.Any(), testToken).Return(expectedList, nil)
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
@@ -73,17 +71,16 @@ func TestWalletHandlerDeleteCard(t *testing.T) {
 	mockWalletStorage := NewMockWalletStorage(ctrl)
 	h := NewWalletHandler(mockWalletStorage)
 
-	req := DeleteCardDataRequest{User: "user", CardNumber: "1234"}
+	req := DeleteCardDataRequest{CardNumber: "1234"}
 	data, err := json.Marshal(req)
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodDelete, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: req.User, Password: "1234"}
 	deletedCard := &CardData{Number: "1234"}
-	mockWalletStorage.EXPECT().DeleteCard(gomock.Any(), user, deletedCard).Return(nil)
+	mockWalletStorage.EXPECT().DeleteCard(gomock.Any(), testToken, deletedCard).Return(nil)
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)

@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,15 +19,16 @@ func TestRegisterHandler(t *testing.T) {
 	mockRegistrator := NewMockRegistrator(ctrl)
 	h := NewRegistrationHandler(mockRegistrator)
 
-	req := RegistrationRequest{User: "user", Password: "1234"}
-	data, err := json.Marshal(req)
-	require.NoError(t, err)
-
-	r := httptest.NewRequest(http.MethodPut, endpoint.RegisterEndpoint, bytes.NewBuffer(data))
+	r := httptest.NewRequest(http.MethodPut, endpoint.RegisterEndpoint, nil)
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("user"), &User{Login: "user", Password: "1234"}))
 	w := httptest.NewRecorder()
 
-	mockRegistrator.EXPECT().Register(gomock.Any(), req.User, req.Password).Return(nil)
+	mockRegistrator.EXPECT().Register(gomock.Any(), gomock.Any()).Return(nil)
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
+
+	resp := &RegistrationResponse{}
+	err := json.Unmarshal(w.Body.Bytes(), resp)
+	require.NoError(t, err)
 }

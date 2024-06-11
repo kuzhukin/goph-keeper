@@ -76,8 +76,8 @@ func (c *Storage) exec(query string) error {
 	return nil
 }
 
-func (c *Storage) Check(ctx context.Context, login, password string) error {
-	userQuery := prepareGetUserQuery(login)
+func (c *Storage) Check(ctx context.Context, token string) error {
+	userQuery := prepareGetUserQuery(token)
 
 	rows, err := doQuery(ctx, func(ctx context.Context) (*sql.Rows, error) {
 		return c.db.QueryContext(ctx, userQuery.request, userQuery.args...)
@@ -93,18 +93,18 @@ func (c *Storage) Check(ctx context.Context, login, password string) error {
 		return handler.ErrUnknownUser
 	}
 
-	if err := rows.Scan(&storedUser.Login, &storedUser.Password); err != nil {
+	if err := rows.Scan(&storedUser.Login, &storedUser.Password, &storedUser.Token); err != nil {
 		return err
 	}
 
-	if storedUser.Password != password {
+	if storedUser.Token != token {
 		return handler.ErrUnknownUser
 	}
 
 	return nil
 }
 
-func (c *Storage) CreateData(ctx context.Context, u *handler.User, d *handler.Record) error {
+func (c *Storage) CreateData(ctx context.Context, userToken string, d *handler.Record) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -114,17 +114,24 @@ func (c *Storage) CreateData(ctx context.Context, u *handler.User, d *handler.Re
 	}
 	defer recoverAndRollBack(tx)
 
-	query := prepareNewDataQuery(u.Login, d.Name, d.Data)
-
-	err = doTransactionExec(ctx, tx, query)
+	u, err := getUserInTransaction(ctx, tx, userToken)
 	if err != nil {
+		return err
+	}
+
+	err = doTransactionExec(ctx, tx, prepareNewDataQuery(u.Login, d.Name, d.Data))
+	if err != nil {
+		if isNotUniqueError(err) {
+			return handler.ErrDataAlreadyExist
+		}
+
 		return fmt.Errorf("add user=%s data=%s, err=%w", u.Login, d.Data, err)
 	}
 
 	return tx.Commit()
 }
 
-func (c *Storage) UpdateData(baseCtx context.Context, u *handler.User, d *handler.Record) error {
+func (c *Storage) UpdateData(baseCtx context.Context, userToken string, d *handler.Record) error {
 	ctx, cancel := context.WithTimeout(baseCtx, time.Second*5)
 	defer cancel()
 
@@ -134,7 +141,8 @@ func (c *Storage) UpdateData(baseCtx context.Context, u *handler.User, d *handle
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+	u, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return err
 	}
 
@@ -152,7 +160,7 @@ func (c *Storage) UpdateData(baseCtx context.Context, u *handler.User, d *handle
 		return nil
 	}
 
-	err = doTransactionExec(ctx, tx, prepareUpdateDataQuery(u.Login, d.Name, d.Data, d.Revision))
+	err = doTransactionExec(ctx, tx, prepareUpdateDataQuery(u.Login, d.Name, d.Data))
 	if err != nil {
 		return fmt.Errorf("do update user=%s, data=%s, rev=%d, err=%w", u.Login, d.Name, d.Revision, err)
 	}
@@ -160,7 +168,7 @@ func (c *Storage) UpdateData(baseCtx context.Context, u *handler.User, d *handle
 	return tx.Commit()
 }
 
-func (c *Storage) LoadData(baseCtx context.Context, u *handler.User, dataKey string) (*handler.Record, error) {
+func (c *Storage) LoadData(baseCtx context.Context, userToken string, dataKey string) (*handler.Record, error) {
 	ctx, cancel := context.WithTimeout(baseCtx, time.Second*5)
 	defer cancel()
 
@@ -170,7 +178,8 @@ func (c *Storage) LoadData(baseCtx context.Context, u *handler.User, dataKey str
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+	u, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return nil, err
 	}
 
@@ -182,7 +191,7 @@ func (c *Storage) LoadData(baseCtx context.Context, u *handler.User, dataKey str
 	return d, tx.Commit()
 }
 
-func (c *Storage) ListData(baseCtx context.Context, u *handler.User) ([]*handler.Record, error) {
+func (c *Storage) ListData(baseCtx context.Context, userToken string) ([]*handler.Record, error) {
 	ctx, cancel := context.WithTimeout(baseCtx, time.Second*5)
 	defer cancel()
 
@@ -192,7 +201,8 @@ func (c *Storage) ListData(baseCtx context.Context, u *handler.User) ([]*handler
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+	u, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return nil, err
 	}
 
@@ -225,7 +235,7 @@ func (c *Storage) ListData(baseCtx context.Context, u *handler.User) ([]*handler
 
 }
 
-func (c *Storage) DeleteData(ctx context.Context, u *handler.User, d *handler.Record) error {
+func (c *Storage) DeleteData(ctx context.Context, userToken string, d *handler.Record) error {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -235,7 +245,8 @@ func (c *Storage) DeleteData(ctx context.Context, u *handler.User, d *handler.Re
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+	u, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return err
 	}
 
@@ -247,13 +258,7 @@ func (c *Storage) DeleteData(ctx context.Context, u *handler.User, d *handler.Re
 	return tx.Commit()
 }
 
-// Register new user
-// return:
-// * nil - user registred successfully
-// * ErrUserAlreadyRegistred - user with password already registred
-// * ErrPasswordConflict - user registred with other password
-// * otherErr - internal
-func (c *Storage) Register(ctx context.Context, login string, password string) error {
+func (c *Storage) Register(ctx context.Context, u *handler.User) error {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -263,7 +268,7 @@ func (c *Storage) Register(ctx context.Context, login string, password string) e
 	}
 	defer recoverAndRollBack(tx)
 
-	query := prepareGetUserQuery(login)
+	query := prepareGetUserQuery(u.Login)
 
 	user, err := doTransactionQuery(ctxWithTimeout, tx, query, func(rows *sql.Rows) (*handler.User, error) {
 		if !rows.Next() {
@@ -278,7 +283,7 @@ func (c *Storage) Register(ctx context.Context, login string, password string) e
 		return user, nil
 	})
 	if err == nil {
-		if user.Password != password {
+		if user.Password != u.Password {
 			return handler.ErrBadPassword
 		}
 
@@ -289,7 +294,7 @@ func (c *Storage) Register(ctx context.Context, login string, password string) e
 		return err
 	}
 
-	query = prepareCreateUserQuery(login, password)
+	query = prepareCreateUserQuery(u.Login, u.Password, u.Token)
 
 	err = doTransactionExec(ctxWithTimeout, tx, query)
 	if err != nil {
@@ -299,14 +304,15 @@ func (c *Storage) Register(ctx context.Context, login string, password string) e
 	return tx.Commit()
 }
 
-func (c *Storage) CreateCard(ctx context.Context, u *handler.User, card *handler.CardData) error {
+func (c *Storage) CreateCard(ctx context.Context, userToken string, card *handler.CardData) error {
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+	u, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return err
 	}
 
@@ -317,14 +323,15 @@ func (c *Storage) CreateCard(ctx context.Context, u *handler.User, card *handler
 	return tx.Commit()
 }
 
-func (c *Storage) ListCard(ctx context.Context, u *handler.User) ([]*handler.CardData, error) {
+func (c *Storage) ListCard(ctx context.Context, userToken string) ([]*handler.CardData, error) {
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+	u, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return nil, err
 	}
 
@@ -353,14 +360,15 @@ func (c *Storage) ListCard(ctx context.Context, u *handler.User) ([]*handler.Car
 	return cards, nil
 }
 
-func (c *Storage) DeleteCard(ctx context.Context, u *handler.User, card *handler.CardData) error {
+func (c *Storage) DeleteCard(ctx context.Context, userToken string, card *handler.CardData) error {
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, u); err != nil {
+	u, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return err
 	}
 
@@ -368,52 +376,14 @@ func (c *Storage) DeleteCard(ctx context.Context, u *handler.User, card *handler
 }
 
 func recoverAndRollBack(tx *sql.Tx) {
-	err := recover()
-	if err != nil {
-		err = tx.Rollback()
-		if err != nil {
-			zlog.Logger().Errorf("tx rollback failed, err=%w", err)
-		}
+	_ = tx.Rollback()
+
+	if err := recover(); err != nil {
+		zlog.Logger().Errorf("tx rollback failed, err=%w", err)
 	}
 }
 
-func (c *Storage) Authenticate(ctx context.Context, user string, password string) error {
-	// TODO: скорей всего это не нужный метод
-	return nil
-}
-
-func User(
-	ctx context.Context,
-	tx *sql.Tx,
-	u *handler.User,
-) error {
-	userQuery := prepareGetUserQuery(u.Login)
-
-	storedUser, err := doTransactionQuery(ctx, tx, userQuery, func(rows *sql.Rows) (*handler.User, error) {
-		storedUser := &handler.User{}
-
-		if !rows.Next() {
-			return nil, fmt.Errorf("user=%s isn't registred err=%w", u.Login, handler.ErrUnknownUser)
-		}
-
-		if err := rows.Scan(&storedUser.Login, &storedUser.Password); err != nil {
-			return nil, err
-		}
-
-		return storedUser, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	if storedUser.Password != u.Password {
-		return fmt.Errorf("user=%s, err=%w", u.Login, handler.ErrBadPassword)
-	}
-
-	return err
-}
-
-func (c *Storage) CreateSecret(ctx context.Context, user *handler.User, secret *handler.Secret) error {
+func (c *Storage) CreateSecret(ctx context.Context, userToken string, secret *handler.Secret) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -423,7 +393,8 @@ func (c *Storage) CreateSecret(ctx context.Context, user *handler.User, secret *
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, user); err != nil {
+	user, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return err
 	}
 
@@ -437,7 +408,7 @@ func (c *Storage) CreateSecret(ctx context.Context, user *handler.User, secret *
 	return tx.Commit()
 }
 
-func (c *Storage) GetSecret(ctx context.Context, user *handler.User, secretKey string) (*handler.Secret, error) {
+func (c *Storage) GetSecret(ctx context.Context, userToken, secretKey string) (*handler.Secret, error) {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -447,7 +418,8 @@ func (c *Storage) GetSecret(ctx context.Context, user *handler.User, secretKey s
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, user); err != nil {
+	user, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return nil, err
 	}
 
@@ -475,7 +447,7 @@ func (c *Storage) GetSecret(ctx context.Context, user *handler.User, secretKey s
 	return secret, nil
 }
 
-func (c *Storage) DeleteSecret(ctx context.Context, user *handler.User, secretKey string) error {
+func (c *Storage) DeleteSecret(ctx context.Context, userToken, secretKey string) error {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -485,7 +457,8 @@ func (c *Storage) DeleteSecret(ctx context.Context, user *handler.User, secretKe
 	}
 	defer recoverAndRollBack(tx)
 
-	if err = checkUserInTransaction(ctx, tx, user); err != nil {
+	user, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
 		return err
 	}
 
@@ -495,6 +468,45 @@ func (c *Storage) DeleteSecret(ctx context.Context, user *handler.User, secretKe
 	}
 
 	return tx.Commit()
+}
+
+func (c *Storage) ListSecret(ctx context.Context, userToken string) ([]*handler.Secret, error) {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Second*5)
+	defer cancel()
+
+	tx, err := c.db.BeginTx(ctxWithTimeout, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer recoverAndRollBack(tx)
+
+	user, err := getUserInTransaction(ctx, tx, userToken)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := doTransactionQuery(ctx, tx, prepareListSecret(user.Login), func(rows *sql.Rows) ([]*handler.Secret, error) {
+		secrets := make([]*handler.Secret, 0, 10)
+		for rows.Next() {
+			s := &handler.Secret{}
+			if err = rows.Scan(&s.Key, &s.Value); err != nil {
+				return nil, err
+			}
+
+			secrets = append(secrets, s)
+		}
+
+		return secrets, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return list, nil
 }
 
 func getDataInTransaction(
@@ -526,35 +538,31 @@ func deleteDataInTransaction(
 	return doTransactionExec(ctx, tx, prepareDeleteDataQuery(u.Login, dataKey))
 }
 
-func checkUserInTransaction(
+func getUserInTransaction(
 	ctx context.Context,
 	tx *sql.Tx,
-	u *handler.User,
-) error {
-	userQuery := prepareGetUserQuery(u.Login)
+	userToken string,
+) (*handler.User, error) {
+	userQuery := prepareGetUserQuery(userToken)
 
 	storedUser, err := doTransactionQuery(ctx, tx, userQuery, func(rows *sql.Rows) (*handler.User, error) {
 		storedUser := &handler.User{}
 
 		if !rows.Next() {
-			return nil, fmt.Errorf("user=%s isn't registred err=%w", u.Login, handler.ErrUnknownUser)
+			return nil, fmt.Errorf("user isn't registred err=%w", handler.ErrUnknownUser)
 		}
 
-		if err := rows.Scan(&storedUser.Login, &storedUser.Password); err != nil {
+		if err := rows.Scan(&storedUser.Login, &storedUser.Password, &storedUser.Token); err != nil {
 			return nil, err
 		}
 
 		return storedUser, nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if storedUser.Password != u.Password {
-		return fmt.Errorf("user=%s, err=%w", u.Login, handler.ErrBadPassword)
-	}
-
-	return err
+	return storedUser, nil
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -599,11 +607,11 @@ func isRetriableError(err error) bool {
 	return errors.As(err, &pgErr) && pgerrcode.IsConnectionException(pgErr.Code)
 }
 
-// func isNotUniqueError(err error) bool {
-// 	var pgErr *pgconn.PgError
+func isNotUniqueError(err error) bool {
+	var pgErr *pgconn.PgError
 
-// 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
-// }
+	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
+}
 
 func doTransactionExec(ctx context.Context, tx *sql.Tx, query *query) error {
 	_, err := doQuery(ctx, func(ctx context.Context) (sql.Result, error) {

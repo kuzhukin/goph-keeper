@@ -35,44 +35,44 @@ func (m *MockWalletStorage) EXPECT() *MockWalletStorageMockRecorder {
 }
 
 // CreateCard mocks base method.
-func (m *MockWalletStorage) CreateCard(ctx context.Context, u *User, d *CardData) error {
+func (m *MockWalletStorage) CreateCard(ctx context.Context, userToken string, d *CardData) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateCard", ctx, u, d)
+	ret := m.ctrl.Call(m, "CreateCard", ctx, userToken, d)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateCard indicates an expected call of CreateCard.
-func (mr *MockWalletStorageMockRecorder) CreateCard(ctx, u, d interface{}) *gomock.Call {
+func (mr *MockWalletStorageMockRecorder) CreateCard(ctx, userToken, d interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCard", reflect.TypeOf((*MockWalletStorage)(nil).CreateCard), ctx, u, d)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCard", reflect.TypeOf((*MockWalletStorage)(nil).CreateCard), ctx, userToken, d)
 }
 
 // DeleteCard mocks base method.
-func (m *MockWalletStorage) DeleteCard(ctx context.Context, u *User, d *CardData) error {
+func (m *MockWalletStorage) DeleteCard(ctx context.Context, userToken string, d *CardData) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteCard", ctx, u, d)
+	ret := m.ctrl.Call(m, "DeleteCard", ctx, userToken, d)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteCard indicates an expected call of DeleteCard.
-func (mr *MockWalletStorageMockRecorder) DeleteCard(ctx, u, d interface{}) *gomock.Call {
+func (mr *MockWalletStorageMockRecorder) DeleteCard(ctx, userToken, d interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteCard", reflect.TypeOf((*MockWalletStorage)(nil).DeleteCard), ctx, u, d)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteCard", reflect.TypeOf((*MockWalletStorage)(nil).DeleteCard), ctx, userToken, d)
 }
 
 // ListCard mocks base method.
-func (m *MockWalletStorage) ListCard(ctx context.Context, u *User) ([]*CardData, error) {
+func (m *MockWalletStorage) ListCard(ctx context.Context, userToken string) ([]*CardData, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListCard", ctx, u)
+	ret := m.ctrl.Call(m, "ListCard", ctx, userToken)
 	ret0, _ := ret[0].([]*CardData)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListCard indicates an expected call of ListCard.
-func (mr *MockWalletStorageMockRecorder) ListCard(ctx, u interface{}) *gomock.Call {
+func (mr *MockWalletStorageMockRecorder) ListCard(ctx, userToken interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCard", reflect.TypeOf((*MockWalletStorage)(nil).ListCard), ctx, u)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCard", reflect.TypeOf((*MockWalletStorage)(nil).ListCard), ctx, userToken)
 }

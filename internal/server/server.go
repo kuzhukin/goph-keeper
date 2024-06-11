@@ -31,15 +31,21 @@ func StartNew(config *config.Config) (*Server, error) {
 
 	router := chi.NewRouter()
 
-	middleware.NewAuthMiddleware(storage)
+	authMiddleware := middleware.NewAuthMiddleware(storage)
 
 	router.Use(middleware.LoggingHTTPHandler)
+	router.Use(authMiddleware.Middleware)
+
+	router.Handle(endpoint.RegisterEndpoint, handler.NewRegistrationHandler(storage))
 
 	router.Handle(endpoint.BinaryDataEndpoint, handler.NewDataHandler(storage))
-	router.Handle(endpoint.RegisterEndpoint, handler.NewRegistrationHandler(storage))
-	router.Handle(endpoint.AuthEndpoint, handler.NewAuthenticationHandler(storage))
+	router.Handle(endpoint.BinariesDataEndpoint, handler.NewListDataHandler(storage))
+
 	router.Handle(endpoint.WalletEndpoint, handler.NewWalletHandler(storage))
+	router.Handle(endpoint.WalletsEndpoint, handler.NewWalletListHandler(storage))
+
 	router.Handle(endpoint.SecretEndpoint, handler.NewSecretDataHandler(storage))
+	router.Handle(endpoint.SecretsEndpoint, handler.NewSecretListHandler(storage))
 
 	server := &Server{
 		httpServer: http.Server{Addr: config.Hostport, Handler: router},

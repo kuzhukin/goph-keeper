@@ -25,12 +25,11 @@ func TestSecretHandlerCreate(t *testing.T) {
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodPut, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: "user", Password: "1234"}
 	secret := &Secret{Key: "key", Value: "value"}
-	mockSecretStorage.EXPECT().CreateSecret(gomock.Any(), user, secret).Return(nil)
+	mockSecretStorage.EXPECT().CreateSecret(gomock.Any(), testToken, secret).Return(nil)
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
@@ -48,12 +47,11 @@ func TestSecretHandlerGet(t *testing.T) {
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodGet, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: "user", Password: "1234"}
 	secret := &Secret{Key: "key", Value: "value"}
-	mockSecretStorage.EXPECT().GetSecret(gomock.Any(), user, "key").Return(secret, nil)
+	mockSecretStorage.EXPECT().GetSecret(gomock.Any(), testToken, "key").Return(secret, nil)
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
@@ -79,11 +77,10 @@ func TestSecretHandlerDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	r := httptest.NewRequest(http.MethodDelete, endpoint.WalletEndpoint, bytes.NewBuffer(data))
-	r = r.WithContext(context.WithValue(r.Context(), "auth", &User{Login: "user", Password: "1234"}))
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
 	w := httptest.NewRecorder()
 
-	user := &User{Login: "user", Password: "1234"}
-	mockSecretStorage.EXPECT().DeleteSecret(gomock.Any(), user, "key").Return(nil)
+	mockSecretStorage.EXPECT().DeleteSecret(gomock.Any(), testToken, "key").Return(nil)
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)

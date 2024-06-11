@@ -11,6 +11,7 @@ type Record struct {
 type User struct {
 	Login     string
 	Password  string
+	Token     string
 	IsActive  bool
 	CryptoKey []byte
 }

@@ -55,5 +55,11 @@ func writeResponse[T any](w http.ResponseWriter, response T) error {
 }
 
 func getUserFromRequestContext(r *http.Request) *User {
-	return (r.Context().Value("auth")).(*User)
+	return (r.Context().Value(AuthInfo("user"))).(*User)
 }
+
+func getTokenFromRequestContext(r *http.Request) string {
+	return (r.Context().Value(AuthInfo("token"))).(string)
+}
+
+type AuthInfo string

@@ -35,73 +35,73 @@ func (m *MockDataStorage) EXPECT() *MockDataStorageMockRecorder {
 }
 
 // CreateData mocks base method.
-func (m *MockDataStorage) CreateData(ctx context.Context, u *User, r *Record) error {
+func (m *MockDataStorage) CreateData(ctx context.Context, userToken string, r *Record) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateData", ctx, u, r)
+	ret := m.ctrl.Call(m, "CreateData", ctx, userToken, r)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CreateData indicates an expected call of CreateData.
-func (mr *MockDataStorageMockRecorder) CreateData(ctx, u, r interface{}) *gomock.Call {
+func (mr *MockDataStorageMockRecorder) CreateData(ctx, userToken, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateData", reflect.TypeOf((*MockDataStorage)(nil).CreateData), ctx, u, r)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateData", reflect.TypeOf((*MockDataStorage)(nil).CreateData), ctx, userToken, r)
 }
 
 // DeleteData mocks base method.
-func (m *MockDataStorage) DeleteData(ctx context.Context, u *User, r *Record) error {
+func (m *MockDataStorage) DeleteData(ctx context.Context, userToken string, r *Record) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteData", ctx, u, r)
+	ret := m.ctrl.Call(m, "DeleteData", ctx, userToken, r)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteData indicates an expected call of DeleteData.
-func (mr *MockDataStorageMockRecorder) DeleteData(ctx, u, r interface{}) *gomock.Call {
+func (mr *MockDataStorageMockRecorder) DeleteData(ctx, userToken, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteData", reflect.TypeOf((*MockDataStorage)(nil).DeleteData), ctx, u, r)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteData", reflect.TypeOf((*MockDataStorage)(nil).DeleteData), ctx, userToken, r)
 }
 
 // ListData mocks base method.
-func (m *MockDataStorage) ListData(ctx context.Context, u *User) ([]*Record, error) {
+func (m *MockDataStorage) ListData(ctx context.Context, userToken string) ([]*Record, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListData", ctx, u)
+	ret := m.ctrl.Call(m, "ListData", ctx, userToken)
 	ret0, _ := ret[0].([]*Record)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListData indicates an expected call of ListData.
-func (mr *MockDataStorageMockRecorder) ListData(ctx, u interface{}) *gomock.Call {
+func (mr *MockDataStorageMockRecorder) ListData(ctx, userToken interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListData", reflect.TypeOf((*MockDataStorage)(nil).ListData), ctx, u)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListData", reflect.TypeOf((*MockDataStorage)(nil).ListData), ctx, userToken)
 }
 
 // LoadData mocks base method.
-func (m *MockDataStorage) LoadData(ctx context.Context, u *User, name string) (*Record, error) {
+func (m *MockDataStorage) LoadData(ctx context.Context, userToken, name string) (*Record, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LoadData", ctx, u, name)
+	ret := m.ctrl.Call(m, "LoadData", ctx, userToken, name)
 	ret0, _ := ret[0].(*Record)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // LoadData indicates an expected call of LoadData.
-func (mr *MockDataStorageMockRecorder) LoadData(ctx, u, name interface{}) *gomock.Call {
+func (mr *MockDataStorageMockRecorder) LoadData(ctx, userToken, name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadData", reflect.TypeOf((*MockDataStorage)(nil).LoadData), ctx, u, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadData", reflect.TypeOf((*MockDataStorage)(nil).LoadData), ctx, userToken, name)
 }
 
 // UpdateData mocks base method.
-func (m *MockDataStorage) UpdateData(ctx context.Context, u *User, r *Record) error {
+func (m *MockDataStorage) UpdateData(ctx context.Context, userToken string, r *Record) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateData", ctx, u, r)
+	ret := m.ctrl.Call(m, "UpdateData", ctx, userToken, r)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateData indicates an expected call of UpdateData.
-func (mr *MockDataStorageMockRecorder) UpdateData(ctx, u, r interface{}) *gomock.Call {
+func (mr *MockDataStorageMockRecorder) UpdateData(ctx, userToken, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateData", reflect.TypeOf((*MockDataStorage)(nil).UpdateData), ctx, u, r)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateData", reflect.TypeOf((*MockDataStorage)(nil).UpdateData), ctx, userToken, r)
 }

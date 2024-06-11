@@ -10,7 +10,7 @@ const (
 	);`
 
 	addNewDataQuery  = `INSERT INTO data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
-	updateDataQuery  = `UPDATE data SET "value" = $3 WHERE "user" = $1 AND "key" = 2;`
+	updateDataQuery  = `UPDATE data SET "value" = $1, "revision" = "revision" + 1 WHERE "user" = $2 AND "key" = $3;`
 	getRevisionQuery = `SELECT "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
 	getData          = `SELECT "value", "revision" FROM data WHERE "user" = $1 AND "key" = $2;`
 	listData         = `SELECT "key", "value", "revision" FROM data WHERE "user" = $1;`
@@ -22,11 +22,7 @@ func prepareAddDataQuery(user string, key string, value string) *query {
 }
 
 func prepareUpdateDataQuery(user, key, value string) *query {
-	return &query{request: updateDataQuery, args: []any{user, key, value}}
-}
-
-func preareGetRevisionQuery(user, key string) *query {
-	return &query{request: getRevisionQuery, args: []any{user, key}}
+	return &query{request: updateDataQuery, args: []any{value, user, key}}
 }
 
 func prepareGetDataQuery(user, key string) *query {

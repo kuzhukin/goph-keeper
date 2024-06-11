@@ -56,16 +56,21 @@ func NewApplication() (*Application, error) {
 		app.storage = dbStorage
 
 		user, err := app.storage.GetActive()
-		if err != nil && !errors.Is(err, sqlstorage.ErrNotActiveOrRegistredUsers) {
-			return nil, err
-		}
-
-		user.CryptoKey, err = base64.RawStdEncoding.DecodeString(string(user.CryptoKey))
 		if err != nil {
-			return nil, err
+			if !errors.Is(err, sqlstorage.ErrNotActiveOrRegistredUsers) {
+				return nil, err
+			}
 		}
 
-		app.user = user
+		if user != nil {
+			user.CryptoKey, err = base64.RawStdEncoding.DecodeString(string(user.CryptoKey))
+			if err != nil {
+				return nil, err
+			}
+
+			app.user = user
+		}
+
 		app.client = newClient(conf)
 	}
 
@@ -91,9 +96,10 @@ func (a *Application) initCLI() {
 
 func (a *Application) makeSecretCmd() *cli.Command {
 	return &cli.Command{
-		Name:   "secret",
-		Usage:  "Operations with bank's cards",
-		Before: a.checkConfig,
+		Name:         "secret",
+		Usage:        "Operations with bank's cards",
+		Before:       a.checkConfig,
+		BashComplete: cli.DefaultAppComplete,
 		Subcommands: []*cli.Command{
 			a.makeCreateSecretCmd(),
 			a.makeDeleteSecretCmd(),
@@ -104,8 +110,10 @@ func (a *Application) makeSecretCmd() *cli.Command {
 
 func (a *Application) makeCreateSecretCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create new secret",
+		Name:         "create",
+		Usage:        "Create new secret",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name"},
 			&cli.StringFlag{Name: "key"},
@@ -117,8 +125,9 @@ func (a *Application) makeCreateSecretCmd() *cli.Command {
 
 func (a *Application) makeDeleteSecretCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create new secret",
+		Name:         "create",
+		Usage:        "Create new secret",
+		BashComplete: cli.DefaultAppComplete,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name"},
 		},
@@ -128,8 +137,9 @@ func (a *Application) makeDeleteSecretCmd() *cli.Command {
 
 func (a *Application) makeGetSecretCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create new secret",
+		Name:         "create",
+		Usage:        "Create new secret",
+		BashComplete: cli.DefaultAppComplete,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name"},
 		},
@@ -148,7 +158,7 @@ func (a *Application) createSecertCmdHandler(ctx *cli.Context) error {
 		return err
 	}
 
-	if err = a.client.CreateSecret(a.user.Login, a.user.Password, secret.Name, cryptedSecret); err != nil {
+	if err = a.client.CreateSecret(a.user.Token, secret.Name, cryptedSecret); err != nil {
 		return err
 	}
 
@@ -178,7 +188,7 @@ func (a *Application) deleteSecretCmdHandler(ctx *cli.Context) error {
 	}
 
 	// we are firstly deleting data on the server
-	if err := a.client.DeleteSecret(a.user.Login, a.user.Password, key); err != nil {
+	if err := a.client.DeleteSecret(a.user.Token, key); err != nil {
 		return err
 	}
 
@@ -213,8 +223,9 @@ func makeSecretFromArgs(ctx *cli.Context) (*storage.Secret, error) {
 
 func (a *Application) makeCreateCardCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Create new card",
+		Name:         "create",
+		Usage:        "Create new card",
+		BashComplete: cli.DefaultAppComplete,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "number"},
 			&cli.StringFlag{Name: "expiration", Usage: fmt.Sprintf("Data in format: %s", storage.ExpirationFormat)},
@@ -227,9 +238,10 @@ func (a *Application) makeCreateCardCmd() *cli.Command {
 
 func (a *Application) makeWalletCmd() *cli.Command {
 	return &cli.Command{
-		Name:   "wallet",
-		Usage:  "Operations with bank's cards",
-		Before: a.checkConfig,
+		Name:         "wallet",
+		Usage:        "Operations with bank's cards",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Subcommands: []*cli.Command{
 			a.makeCreateCardCmd(),
 			a.makeDeleteCardCmd(),
@@ -249,7 +261,7 @@ func (a *Application) createCardCmdHandler(ctx *cli.Context) error {
 		return nil
 	}
 
-	if err = a.client.CreateCardData(a.user.Login, a.user.Password, card.Number, data); err != nil {
+	if err = a.client.CreateCardData(a.user.Token, card.Number, data); err != nil {
 		return err
 	}
 
@@ -353,13 +365,17 @@ func validateCardNumber(number string) (string, bool) {
 		return "", false
 	}
 
-	return string(validatedNumber), true
+	validatedNumberStr := string(validatedNumber)
+
+	return validatedNumberStr, true
 }
 
 func (a *Application) makeDeleteCardCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "delete",
-		Usage: "Delete card",
+		Name:         "delete",
+		Usage:        "Delete card",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "number"},
 		},
@@ -377,7 +393,7 @@ func (a *Application) deleteCardCmdHandler(ctx *cli.Context) error {
 		return err
 	}
 
-	if err := a.client.DeleteCardData(a.user.Login, a.user.Password, number); err != nil {
+	if err := a.client.DeleteCardData(a.user.Token, number); err != nil {
 		return err
 	}
 
@@ -399,17 +415,20 @@ func (a *Application) listCardCmdHandler(_ *cli.Context) error {
 
 func (a *Application) makeListCardCmd() *cli.Command {
 	return &cli.Command{
-		Name:   "list",
-		Usage:  "List with all user cards",
-		Action: a.listCardCmdHandler,
+		Name:         "list",
+		Usage:        "List with all user cards",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
+		Action:       a.listCardCmdHandler,
 	}
 }
 
 func (a *Application) makeDataCmd() *cli.Command {
 	return &cli.Command{
-		Name:   "data",
-		Usage:  "Operations with text or binary data",
-		Before: a.checkConfig,
+		Name:         "data",
+		Usage:        "Operations with text or binary data",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Subcommands: []*cli.Command{
 			a.makeCreateCmd(),
 			a.makeGetCmd(),
@@ -425,6 +444,7 @@ func (a *Application) makeConfigCmd() *cli.Command {
 		Name:        "config",
 		Usage:       "Client configuration",
 		Description: "Add configuration to ~/.goph-keeper/client_config.yaml",
+		Before:      a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "server-url",
@@ -462,9 +482,10 @@ func (a *Application) configCmdHandler(ctx *cli.Context) error {
 
 func (a *Application) makeRegisterCmd() *cli.Command {
 	return &cli.Command{
-		Name:        "register",
-		Usage:       "Registrates user in system",
-		Description: "You shoud register before using application",
+		Name:         "register",
+		Usage:        "Registrates user in system",
+		Description:  "You shoud register before using application",
+		BashComplete: cli.DefaultAppComplete,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "login",
@@ -498,12 +519,12 @@ func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 	encryptedPassword := crypto.Encrypt([]byte(password))
 	a.user.Password = encryptedPassword
 
-	err = a.storage.Register(login, encryptedPassword, base64.RawStdEncoding.EncodeToString(cryptoKey))
+	token, err := a.client.RegisterUser(login, encryptedPassword)
 	if err != nil {
-		return err
+		return fmt.Errorf("registration on server failed with error: %w", err)
 	}
 
-	err = a.client.RegisterUser(login, encryptedPassword)
+	err = a.storage.Register(login, encryptedPassword, token, base64.RawStdEncoding.EncodeToString(cryptoKey))
 	if err != nil {
 		return err
 	}
@@ -513,8 +534,10 @@ func (a *Application) registerCmdHandler(ctx *cli.Context) error {
 
 func (a *Application) makeCreateCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "create",
-		Usage: "Send new file to server",
+		Name:         "create",
+		Usage:        "Send new file to server",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -533,28 +556,29 @@ func (a *Application) createCmdHander(ctx *cli.Context) error {
 		return fmt.Errorf("read data from file, err=%w", err)
 	}
 
-	rev, err := a.storage.SaveData(a.user, r)
-	if err != nil {
+	err = a.storage.CreateData(a.user, r)
+	if err != nil && !errors.Is(err, sqlstorage.ErrAlreadyExist) {
 		return err
 	}
 
-	r.Revision = rev
+	r.Revision = 1
 
 	err = a.client.UploadBinaryData(a.user, r)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Data from file=%s is saves", r.Name)
+	fmt.Printf("Data from file=%s is saved\ns", r.Name)
 
 	return nil
 }
 
 func (a *Application) makeGetCmd() *cli.Command {
 	return &cli.Command{
-		Name: "get",
-		// FIXME: по факту файл должен тянутся из локальной базы, для стягивания с сервера должна быть другая команда
-		Usage: "Download file from server",
+		Name:         "get",
+		Usage:        "Download file from server",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -576,12 +600,8 @@ func (a *Application) getDataCmdHandler(ctx *cli.Context) error {
 
 	file, err := a.client.DownloadBinaryData(a.user, filename)
 	if err != nil {
-		fmt.Println(err)
-
 		return err
 	}
-
-	fmt.Println(file.Data)
 
 	decryptedData, err := a.decryptUserData([]byte(file.Data))
 	if err != nil {
@@ -597,6 +617,7 @@ func (a *Application) makeListCmd() *cli.Command {
 	return &cli.Command{
 		Name:   "list",
 		Usage:  "Print local data names and revisions",
+		Before: a.checkConfig,
 		Action: a.listCmdHandler,
 	}
 }
@@ -620,8 +641,10 @@ func (a *Application) listCmdHandler(ctx *cli.Context) error {
 
 func (a *Application) makeUpdateCmd() *cli.Command {
 	return &cli.Command{
-		Name:  "update",
-		Usage: "Update existed data on server",
+		Name:         "update",
+		Usage:        "Update existed data on server",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -643,16 +666,20 @@ func (a *Application) updateCmdHandler(ctx *cli.Context) error {
 		return err
 	}
 
-	rev, err := a.storage.SaveData(a.user, r)
-	if err != nil {
-		return nil
-	}
-
-	r.Revision = rev
-
-	err = a.client.UploadBinaryData(a.user, r)
+	rev, needUpload, err := a.storage.UpdateData(a.user, r)
 	if err != nil {
 		return err
+	}
+
+	if needUpload {
+		r.Revision = rev
+
+		err = a.client.UpdateBinaryData(a.user, r)
+		if err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("Nothing for updating")
 	}
 
 	return nil
@@ -660,9 +687,11 @@ func (a *Application) updateCmdHandler(ctx *cli.Context) error {
 
 func (a *Application) makeDeleteCmd() *cli.Command {
 	return &cli.Command{
-		Name:    "delete",
-		Aliases: []string{"d"},
-		Usage:   "Delete data on server",
+		Name:         "delete",
+		Aliases:      []string{"d"},
+		Usage:        "Delete data on server",
+		BashComplete: cli.DefaultAppComplete,
+		Before:       a.checkConfig,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "file",
@@ -688,6 +717,11 @@ func (a *Application) checkConfig(ctx *cli.Context) error {
 		fmt.Println("client isn't configured")
 
 		cli.ShowAppHelpAndExit(ctx, 1)
+	}
+
+	if a.user == nil {
+		fmt.Println("User isn't registred")
+		cli.ShowCommandHelpAndExit(ctx, "register", 1)
 	}
 
 	if a.client == nil {

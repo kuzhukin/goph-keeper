@@ -9,9 +9,10 @@ import (
 
 //go:generate mockgen -source=secret_handler.go -destination=./mock_secret_handler.go -package=handler
 type SecretStorage interface {
-	CreateSecret(ctx context.Context, user *User, secret *Secret) error
-	GetSecret(ctx context.Context, user *User, secretKey string) (*Secret, error)
-	DeleteSecret(ctx context.Context, user *User, secretKey string) error
+	CreateSecret(ctx context.Context, userToken string, secret *Secret) error
+	GetSecret(ctx context.Context, userToken string, secretKey string) (*Secret, error)
+	DeleteSecret(ctx context.Context, userToken string, secretKey string) error
+	ListSecret(ctx context.Context, userToken string) ([]*Secret, error)
 }
 
 type Secret struct {
@@ -69,9 +70,9 @@ func (h *SecretDataHandler) handleGetData(w http.ResponseWriter, r *http.Request
 		return err
 	}
 
-	user := getUserFromRequestContext(r)
+	token := getTokenFromRequestContext(r)
 
-	secret, err := h.storage.GetSecret(r.Context(), user, req.Key)
+	secret, err := h.storage.GetSecret(r.Context(), token, req.Key)
 	if err != nil {
 		responsestorageError(w, err)
 		return err
@@ -106,11 +107,11 @@ func (h *SecretDataHandler) handleSaveSecret(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 
-	user := getUserFromRequestContext(r)
+	token := getTokenFromRequestContext(r)
 
 	secret := &Secret{Key: req.Key, Value: req.Value}
 
-	if err = h.storage.CreateSecret(r.Context(), user, secret); err != nil {
+	if err = h.storage.CreateSecret(r.Context(), token, secret); err != nil {
 
 		responsestorageError(w, err)
 
@@ -138,9 +139,9 @@ func (h *SecretDataHandler) handleDeleteSecret(w http.ResponseWriter, r *http.Re
 		return err
 	}
 
-	user := getUserFromRequestContext(r)
+	token := getTokenFromRequestContext(r)
 
-	if err := h.storage.DeleteSecret(r.Context(), user, req.Key); err != nil {
+	if err := h.storage.DeleteSecret(r.Context(), token, req.Key); err != nil {
 		responsestorageError(w, err)
 
 		return err

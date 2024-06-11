@@ -19,11 +19,11 @@ var (
 
 //go:generate mockgen -source=data_handler.go -destination=./mock_data_storage.go -package=handler
 type DataStorage interface {
-	CreateData(ctx context.Context, u *User, r *Record) error
-	UpdateData(ctx context.Context, u *User, r *Record) error
-	LoadData(ctx context.Context, u *User, name string) (*Record, error)
-	ListData(ctx context.Context, u *User) ([]*Record, error)
-	DeleteData(ctx context.Context, u *User, r *Record) error
+	CreateData(ctx context.Context, userToken string, r *Record) error
+	UpdateData(ctx context.Context, userToken string, r *Record) error
+	LoadData(ctx context.Context, userToken string, name string) (*Record, error)
+	ListData(ctx context.Context, userToken string) ([]*Record, error)
+	DeleteData(ctx context.Context, userToken string, r *Record) error
 }
 
 type Record struct {
@@ -35,6 +35,7 @@ type Record struct {
 type User struct {
 	Login    string
 	Password string
+	Token    string
 }
 
 type DataHandler struct {
@@ -88,9 +89,9 @@ func (h *DataHandler) handleGetData(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 
-	user := getUserFromRequestContext(r)
+	token := getTokenFromRequestContext(r)
 
-	data, err := h.storage.LoadData(r.Context(), user, req.Key)
+	data, err := h.storage.LoadData(r.Context(), token, req.Key)
 	if err != nil {
 		responsestorageError(w, err)
 		return err
@@ -126,10 +127,10 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 
-	user := getUserFromRequestContext(r)
+	token := getTokenFromRequestContext(r)
 	data := &Record{Name: req.Key, Data: req.Data}
 
-	if err = h.storage.CreateData(r.Context(), user, data); err != nil {
+	if err = h.storage.CreateData(r.Context(), token, data); err != nil {
 
 		responsestorageError(w, err)
 
@@ -142,7 +143,6 @@ func (h *DataHandler) handleSaveData(w http.ResponseWriter, r *http.Request) err
 }
 
 type UpdateDataRequest struct {
-	User     string `json:"user"`
 	Key      string `json:"key"`
 	Data     string `json:"data"`
 	Revision uint64 `json:"revision"`
@@ -160,10 +160,10 @@ func (h *DataHandler) handleUpdateData(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	user := getUserFromRequestContext(r)
+	token := getTokenFromRequestContext(r)
 	data := &Record{Name: req.Key, Data: req.Data, Revision: req.Revision}
 
-	if err := h.storage.UpdateData(r.Context(), user, data); err != nil {
+	if err := h.storage.UpdateData(r.Context(), token, data); err != nil {
 		responsestorageError(w, err)
 
 		return err
@@ -190,11 +190,11 @@ func (h *DataHandler) handleDeleteData(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	user := getUserFromRequestContext(r)
+	token := getTokenFromRequestContext(r)
 
 	data := &Record{Name: req.Key}
 
-	if err := h.storage.DeleteData(r.Context(), user, data); err != nil {
+	if err := h.storage.DeleteData(r.Context(), token, data); err != nil {
 		responsestorageError(w, err)
 
 		return err

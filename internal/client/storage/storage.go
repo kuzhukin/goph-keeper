@@ -9,14 +9,15 @@ type Storage interface {
 }
 
 type DataStorage interface {
-	SaveData(u *User, r *Record) (uint64, error)
+	CreateData(u *User, r *Record) error
+	UpdateData(u *User, r *Record) (uint64, bool, error)
 	LoadData(u *User, name string) (*Record, error)
 	ListData(u *User) ([]*Record, error)
 	DeleteData(u *User, r *Record) error
 }
 
 type UserStorage interface {
-	Register(login string, password string, cryptokey string) error
+	Register(login string, password string, token string, cryptokey string) error
 	GetActive() (*User, error)
 }
 

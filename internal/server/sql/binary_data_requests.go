@@ -11,7 +11,7 @@ const (
 	);`
 
 	addNewBinaryDataQuery = `INSERT INTO binary_data ("user", "key", "value", "revision") VALUES ($1, $2, $3, 1);`
-	updateBinaryDataQuery = `UPDATE binary_data SET "value" = $3, revision = $4 WHERE "user" = $1 AND "key" = $2;`
+	updateBinaryDataQuery = `UPDATE binary_data SET "value" = $3, "revision" = "revision" + 1 WHERE "user" = $1 AND "key" = $2;`
 	getBinaryData         = `SELECT "value", "revision" FROM binary_data WHERE "user" = $1 AND "key" = $2;`
 	deleteBinaryData      = `DELETE FROM binary_data WHERE "user" = $1 AND "key" = $2;`
 	listBinaryData        = `SELECT "key", "value", "revision" FROM binary_data WHERE "user" = $1;`
@@ -25,8 +25,8 @@ func prepareGetDataQuery(user, key string) *query {
 	return &query{request: getBinaryData, args: []any{user, key}}
 }
 
-func prepareUpdateDataQuery(user, key, data string, revision uint64) *query {
-	return &query{request: updateBinaryDataQuery, args: []any{user, key, data, revision}}
+func prepareUpdateDataQuery(user, key, data string) *query {
+	return &query{request: updateBinaryDataQuery, args: []any{user, key, data}}
 }
 
 func prepareDeleteDataQuery(user, key string) *query {

@@ -3,6 +3,7 @@ package gophcrypto
 import (
 	"crypto/aes"
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"testing"
 
@@ -14,6 +15,9 @@ func TestCrypto(t *testing.T) {
 	data := []byte("12345")
 
 	key, err := generateRandom(2 * aes.BlockSize)
+
+	fmt.Println(base64.RawStdEncoding.EncodeToString(key))
+
 	require.NoError(t, err)
 
 	c, err := New(key)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
@@ -69,7 +70,7 @@ func (s *DbStorage) initTables() error {
 	return nil
 }
 
-func (s *DbStorage) Register(login string, password string, cryptoKey string) error {
+func (s *DbStorage) Register(login string, password string, token, cryptoKey string) error {
 	cryptoKeyBase64 := base64.RawStdEncoding.EncodeToString([]byte(cryptoKey))
 
 	if err := s.changeCurrentUserStatus(); err != nil {
@@ -78,11 +79,11 @@ func (s *DbStorage) Register(login string, password string, cryptoKey string) er
 
 	fmt.Println("User was registred. Context was switched to a new user.")
 
-	return s.addNewUser(login, password, cryptoKeyBase64)
+	return s.addNewUser(login, password, token, cryptoKeyBase64)
 }
 
-func (s *DbStorage) addNewUser(login string, password string, cryptoKey string) error {
-	query := prepareInsertUserQuery(login, password, cryptoKey)
+func (s *DbStorage) addNewUser(login string, password string, token, cryptoKey string) error {
+	query := prepareInsertUserQuery(login, password, token, cryptoKey)
 
 	_, err := s.db.Exec(query.request, query.args...)
 	if err != nil {
@@ -92,7 +93,7 @@ func (s *DbStorage) addNewUser(login string, password string, cryptoKey string) 
 			return nil
 		}
 
-		return err
+		return fmt.Errorf("add new user error: %w", err)
 	}
 
 	return nil
@@ -110,8 +111,10 @@ func (s *DbStorage) changeCurrentUserStatus() error {
 		panicErr := recover()
 		if err != nil {
 			fmt.Printf("db transaction panics with error: %v\n", panicErr)
+		}
 
-			err = tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			err = errors.Join(err, fmt.Errorf("db internal err %w", rollbackErr))
 		}
 	}()
 
@@ -128,7 +131,7 @@ func (s *DbStorage) changeCurrentUserStatus() error {
 	}
 
 	u := storage.User{IsActive: true}
-	if err = rows.Scan(&u.Login, &u.Password, &u.CryptoKey); err != nil {
+	if err = rows.Scan(&u.Login, &u.Password, &u.Token, &u.CryptoKey); err != nil {
 		return err
 	}
 
@@ -173,7 +176,7 @@ func (s *DbStorage) GetActive() (*storage.User, error) {
 
 	cryptoKeyBase64 := ""
 
-	err = rows.Scan(&user.Login, &user.Password, &cryptoKeyBase64)
+	err = rows.Scan(&user.Login, &user.Password, &user.Token, &cryptoKeyBase64)
 	if err != nil {
 		return nil, err
 	}
@@ -200,17 +203,34 @@ func (s *DbStorage) DeleteData(u *storage.User, r *storage.Record) error {
 	return err
 }
 
-func (s *DbStorage) SaveData(u *storage.User, r *storage.Record) (uint64, error) {
-	rev, err := s.getRevision(u, r)
-	if err != nil {
-		if errors.Is(err, ErrDataNotExist) {
-			return 1, s.saveNewData(u, r)
-		}
+var ErrAlreadyExist = errors.New("already exist")
 
-		return 0, err
+func (s *DbStorage) CreateData(u *storage.User, r *storage.Record) error {
+	err := s.saveNewData(u, r)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			return ErrAlreadyExist
+		}
 	}
 
-	return rev, s.updateData(u, r)
+	return nil
+}
+
+func (s *DbStorage) UpdateData(u *storage.User, r *storage.Record) (uint64, bool, error) {
+	storedData, err := s.LoadData(u, r.Name)
+	if err != nil {
+		return 0, false, fmt.Errorf("load data, err=%w", err)
+	}
+
+	if storedData.Data == r.Data {
+		return storedData.Revision, false, nil
+	}
+
+	if err = s.updateData(u, r); err != nil {
+		return 0, false, err
+	}
+
+	return storedData.Revision, true, nil
 }
 
 func (s *DbStorage) saveNewData(u *storage.User, r *storage.Record) error {
@@ -246,25 +266,6 @@ func (s *DbStorage) updateData(u *storage.User, r *storage.Record) error {
 }
 
 var ErrDataNotExist = errors.New("data not exist")
-
-func (s *DbStorage) getRevision(u *storage.User, r *storage.Record) (uint64, error) {
-	query := preareGetRevisionQuery(u.Login, r.Name)
-
-	rows, err := s.db.Query(query.request, query.args...)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		return 0, ErrDataNotExist
-	}
-
-	revision := uint64(0)
-	err = rows.Scan(&revision)
-
-	return revision, err
-}
 
 func (s *DbStorage) LoadData(u *storage.User, name string) (*storage.Record, error) {
 	query := prepareGetDataQuery(u.Login, name)
