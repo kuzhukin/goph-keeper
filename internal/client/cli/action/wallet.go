@@ -25,7 +25,7 @@ func CreateCardActionHandler(
 			return err
 		}
 
-		if err = client.CreateCardData(user.Token, card.Number, data); err != nil {
+		if err = client.CreateCardData(ctx.Context, user.Token, card.Number, data); err != nil {
 			return err
 		}
 
@@ -48,7 +48,7 @@ func DeleteCardActionHandler(
 			return err
 		}
 
-		if err := client.DeleteCardData(user.Token, number); err != nil {
+		if err := client.DeleteCardData(ctx.Context, user.Token, number); err != nil {
 			return err
 		}
 

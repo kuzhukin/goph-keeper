@@ -36,7 +36,7 @@ func RegisterAction(
 		encryptedPassword := crypto.Encrypt([]byte(password))
 		user.Password = encryptedPassword
 
-		token, err := client.RegisterUser(login, encryptedPassword)
+		token, err := client.RegisterUser(ctx.Context, login, encryptedPassword)
 		if err != nil {
 			return fmt.Errorf("registration on server failed with error: %w", err)
 		}

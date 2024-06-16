@@ -27,7 +27,7 @@ func CreateSecretActionHandler(
 			return err
 		}
 
-		if err = client.CreateSecret(user.Token, secret.Name, cryptedSecret); err != nil {
+		if err = client.CreateSecret(ctx.Context, user.Token, secret.Name, cryptedSecret); err != nil {
 			return err
 		}
 
@@ -70,7 +70,7 @@ func DeleteSecretActionHandler(
 		}
 
 		// we are firstly deleting data on the server
-		if err := client.DeleteSecret(user.Token, key); err != nil {
+		if err := client.DeleteSecret(ctx.Context, user.Token, key); err != nil {
 			return err
 		}
 

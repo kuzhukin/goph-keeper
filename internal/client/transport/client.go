@@ -2,6 +2,7 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,11 @@ func NewClient(config *config.Config) *Client {
 	}
 }
 
-func (c *Client) UploadBinaryData(u *storage.User, r *storage.Record) error {
+func (c *Client) UploadBinaryData(
+	ctx context.Context,
+	u *storage.User,
+	r *storage.Record,
+) error {
 	saveDataRequest := handler.SaveDataRequest{
 		Key:  r.Name,
 		Data: string(r.Data),
@@ -38,7 +43,7 @@ func (c *Client) UploadBinaryData(u *storage.User, r *storage.Record) error {
 		"token": u.Token,
 	}
 
-	return requestAndHandle(uri, http.MethodPost, headers, saveDataRequest, func(r *http.Response) error {
+	return requestAndHandle(ctx, uri, http.MethodPost, headers, saveDataRequest, func(r *http.Response) error {
 		if r.StatusCode == http.StatusConflict {
 			return errors.New("data already exist")
 		}
@@ -47,7 +52,11 @@ func (c *Client) UploadBinaryData(u *storage.User, r *storage.Record) error {
 	})
 }
 
-func (c *Client) UpdateBinaryData(u *storage.User, r *storage.Record) error {
+func (c *Client) UpdateBinaryData(
+	ctx context.Context,
+	u *storage.User,
+	r *storage.Record,
+) error {
 	saveDataRequest := handler.UpdateDataRequest{
 		Key:      r.Name,
 		Data:     string(r.Data),
@@ -59,7 +68,7 @@ func (c *Client) UpdateBinaryData(u *storage.User, r *storage.Record) error {
 		"token": u.Token,
 	}
 
-	return requestAndHandle(uri, http.MethodPut, headers, saveDataRequest, func(r *http.Response) error {
+	return requestAndHandle(ctx, uri, http.MethodPut, headers, saveDataRequest, func(r *http.Response) error {
 		if r.StatusCode == http.StatusNotFound {
 			return errors.New("data isn't exist")
 		}
@@ -68,7 +77,11 @@ func (c *Client) UpdateBinaryData(u *storage.User, r *storage.Record) error {
 	})
 }
 
-func (c *Client) DownloadBinaryData(u *storage.User, dataKey string) (*storage.Record, error) {
+func (c *Client) DownloadBinaryData(
+	ctx context.Context,
+	u *storage.User,
+	dataKey string,
+) (*storage.Record, error) {
 	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
 	headers := map[string]string{
 		"token": u.Token,
@@ -78,7 +91,7 @@ func (c *Client) DownloadBinaryData(u *storage.User, dataKey string) (*storage.R
 		Key: dataKey,
 	}
 
-	resp, err := requestHandleAndParse[handler.GetDataResponse](uri, http.MethodGet, headers, getDataRequest, func(r *http.Response) error {
+	resp, err := requestHandleAndParse[handler.GetDataResponse](ctx, uri, http.MethodGet, headers, getDataRequest, func(r *http.Response) error {
 		if r.StatusCode == http.StatusNotFound {
 			return errors.New("data isn't exist")
 		}
@@ -92,7 +105,11 @@ func (c *Client) DownloadBinaryData(u *storage.User, dataKey string) (*storage.R
 	return &storage.Record{Name: dataKey, Data: resp.Data, Revision: resp.Revision}, nil
 }
 
-func (c *Client) RegisterUser(login, password string) (string, error) {
+func (c *Client) RegisterUser(
+	ctx context.Context,
+	login string,
+	password string,
+) (string, error) {
 	uri := makeURI(c.hostport, endpoint.RegisterEndpoint)
 
 	headers := map[string]string{
@@ -100,7 +117,7 @@ func (c *Client) RegisterUser(login, password string) (string, error) {
 		"password": password,
 	}
 
-	resp, err := requestAndParse[handler.RegistrationResponse](uri, http.MethodPut, headers, nil)
+	resp, err := requestAndParse[handler.RegistrationResponse](ctx, uri, http.MethodPut, headers, nil)
 	if err != nil {
 		return "", err
 	}
@@ -108,36 +125,53 @@ func (c *Client) RegisterUser(login, password string) (string, error) {
 	return resp.Token, nil
 }
 
-func (c *Client) DeleteBinaryData(login, password, dataKey string) error {
+func (c *Client) DeleteBinaryData(
+	ctx context.Context,
+	login string,
+	password string,
+	dataKey string,
+) error {
 	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
 
 	deleteRequest := &handler.DeleteDataRequest{
 		Key: dataKey,
 	}
 
-	return request(uri, http.MethodDelete, map[string]string{password: password}, deleteRequest)
+	return request(ctx, uri, http.MethodDelete, map[string]string{password: password}, deleteRequest)
 }
 
-func (c *Client) CreateCardData(userToken string, cardNumber string, cardData string) error {
+func (c *Client) CreateCardData(
+	ctx context.Context,
+	userToken string,
+	cardNumber string,
+	cardData string,
+) error {
 	uri := makeURI(c.hostport, endpoint.WalletEndpoint)
 
 	saveRequest := &handler.SaveCardDataRequest{CardNumber: cardNumber, CardData: cardData}
 
-	return request(uri, http.MethodPut, map[string]string{"token": userToken}, saveRequest)
+	return request(ctx, uri, http.MethodPut, map[string]string{"token": userToken}, saveRequest)
 }
 
-func (c *Client) DeleteCardData(userToken string, cardNumber string) error {
+func (c *Client) DeleteCardData(
+	ctx context.Context,
+	userToken string,
+	cardNumber string,
+) error {
 	uri := makeURI(c.hostport, endpoint.WalletEndpoint)
 
 	deleteRequest := &handler.DeleteCardDataRequest{CardNumber: cardNumber}
 
-	return request(uri, http.MethodDelete, map[string]string{"token": userToken}, deleteRequest)
+	return request(ctx, uri, http.MethodDelete, map[string]string{"token": userToken}, deleteRequest)
 }
 
-func (c *Client) ListCardData(userToken string) ([]*handler.CardData, error) {
+func (c *Client) ListCardData(
+	ctx context.Context,
+	userToken string,
+) ([]*handler.CardData, error) {
 	uri := makeURI(c.hostport, endpoint.WalletEndpoint)
 
-	resp, err := requestAndParse[handler.GetCardsResponse](uri, http.MethodGet, map[string]string{"token": userToken}, nil)
+	resp, err := requestAndParse[handler.GetCardsResponse](ctx, uri, http.MethodGet, map[string]string{"token": userToken}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -145,26 +179,38 @@ func (c *Client) ListCardData(userToken string) ([]*handler.CardData, error) {
 	return resp.Cards, nil
 }
 
-func (c *Client) CreateSecret(userToken string, secretName string, secretData string) error {
+func (c *Client) CreateSecret(
+	ctx context.Context,
+	userToken string,
+	secretName string,
+	secretData string,
+) error {
 	uri := makeURI(c.hostport, endpoint.SecretEndpoint)
 
 	saveRequest := &handler.SaveSecretRequest{Key: secretName, Value: secretData}
 
-	return request(uri, http.MethodPut, map[string]string{"token": userToken}, saveRequest)
+	return request(ctx, uri, http.MethodPut, map[string]string{"token": userToken}, saveRequest)
 }
 
-func (c *Client) DeleteSecret(userToken string, secretKey string) error {
+func (c *Client) DeleteSecret(
+	ctx context.Context,
+	userToken string,
+	secretKey string,
+) error {
 	uri := makeURI(c.hostport, endpoint.SecretEndpoint)
 
 	saveRequest := &handler.DeleteSecretRequest{Key: secretKey}
 
-	return request(uri, http.MethodPut, map[string]string{"token": userToken}, saveRequest)
+	return request(ctx, uri, http.MethodPut, map[string]string{"token": userToken}, saveRequest)
 }
 
-func (c *Client) GetSecret(userToken string) (*storage.Secret, error) {
+func (c *Client) GetSecret(
+	ctx context.Context,
+	userToken string,
+) (*storage.Secret, error) {
 	uri := makeURI(c.hostport, endpoint.SecretEndpoint)
 
-	resp, err := requestAndParse[handler.GetSecretResponse](uri, http.MethodGet, map[string]string{"token": userToken}, nil)
+	resp, err := requestAndParse[handler.GetSecretResponse](ctx, uri, http.MethodGet, map[string]string{"token": userToken}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -185,16 +231,29 @@ func defaultHttpResponseHandler(r *http.Response) error {
 	}
 }
 
-func request(uri string, method string, headers map[string]string, request any) error {
-	return requestAndHandle(uri, method, headers, request, defaultHttpResponseHandler)
+func request(
+	ctx context.Context,
+	uri string,
+	method string,
+	headers map[string]string,
+	request any,
+) error {
+	return requestAndHandle(ctx, uri, method, headers, request, defaultHttpResponseHandler)
 }
 
 func statusCodeToError(statusCode int) error {
 	return fmt.Errorf("request failed code=%d error=%s", statusCode, http.StatusText(statusCode))
 }
 
-func requestAndHandle(uri string, method string, headers map[string]string, request any, handler httpResponseHandler) error {
-	req, err := makeRequest(uri, method, headers, request)
+func requestAndHandle(
+	ctx context.Context,
+	uri string,
+	method string,
+	headers map[string]string,
+	request any,
+	handler httpResponseHandler,
+) error {
+	req, err := makeRequest(ctx, uri, method, headers, request)
 	if err != nil {
 		return err
 	}
@@ -212,12 +271,25 @@ func requestAndHandle(uri string, method string, headers map[string]string, requ
 	return nil
 }
 
-func requestAndParse[T any](uri string, method string, headers map[string]string, request any) (*T, error) {
-	return requestHandleAndParse[T](uri, method, headers, request, defaultHttpResponseHandler)
+func requestAndParse[T any](
+	ctx context.Context,
+	uri string,
+	method string,
+	headers map[string]string,
+	request any,
+) (*T, error) {
+	return requestHandleAndParse[T](ctx, uri, method, headers, request, defaultHttpResponseHandler)
 }
 
-func requestHandleAndParse[T any](uri string, method string, headers map[string]string, request any, handler httpResponseHandler) (*T, error) {
-	req, err := makeRequest(uri, method, headers, request)
+func requestHandleAndParse[T any](
+	ctx context.Context,
+	uri string,
+	method string,
+	headers map[string]string,
+	request any,
+	handler httpResponseHandler,
+) (*T, error) {
+	req, err := makeRequest(ctx, uri, method, headers, request)
 	if err != nil {
 		return nil, err
 	}
@@ -256,6 +328,7 @@ func makeURI(hostport string, endpoint string) string {
 }
 
 func makeRequest(
+	ctx context.Context,
 	uri string,
 	method string,
 	additionalHeaders map[string]string,
@@ -272,7 +345,7 @@ func makeRequest(
 		body = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequest(method, uri, body)
+	req, err := http.NewRequestWithContext(ctx, method, uri, body)
 	if err != nil {
 		return nil, err
 	}

@@ -31,7 +31,7 @@ func CreateDataAction(
 
 		r.Revision = 1
 
-		err = client.UploadBinaryData(user, r)
+		err = client.UploadBinaryData(ctx.Context, user, r)
 		if err != nil {
 			return err
 		}
@@ -50,7 +50,7 @@ func GetDataCmdHandler(
 	return func(ctx *cli.Context) error {
 		filename := args.GetFileArg(ctx)
 
-		file, err := client.DownloadBinaryData(user, filename)
+		file, err := client.DownloadBinaryData(ctx.Context, user, filename)
 		if err != nil {
 			return err
 		}
@@ -108,7 +108,7 @@ func UpdateAction(
 		if needUpload {
 			r.Revision = rev
 
-			err = client.UpdateBinaryData(user, r)
+			err = client.UpdateBinaryData(ctx.Context, user, r)
 			if err != nil {
 				return err
 			}
@@ -135,7 +135,7 @@ func DeleteBinaryDataAction(
 			return err
 		}
 
-		if err = client.DeleteBinaryData(user.Login, user.Password, r.Name); err != nil {
+		if err = client.DeleteBinaryData(ctx.Context, user.Login, user.Password, r.Name); err != nil {
 			return err
 		}
 

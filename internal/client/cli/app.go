@@ -53,6 +53,7 @@ func NewApplication() (*Application, error) {
 		}
 
 		app.storage = dbStorage
+		app.client = transport.NewClient(conf)
 
 		user, err := app.storage.GetActive(context.Background())
 		if err != nil {
@@ -61,6 +62,7 @@ func NewApplication() (*Application, error) {
 			}
 		}
 
+		// it's check need for case when we don't have active or registred users in client storage (e.g. first app start)
 		if user != nil {
 			user.CryptoKey, err = base64.RawStdEncoding.DecodeString(string(user.CryptoKey))
 			if err != nil {
@@ -69,8 +71,6 @@ func NewApplication() (*Application, error) {
 
 			app.user = user
 		}
-
-		app.client = transport.NewClient(conf)
 	}
 
 	return app, nil
