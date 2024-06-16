@@ -114,24 +114,8 @@ func (s *DbStorage) addNewUser(
 func (s *DbStorage) changeCurrentUserStatus(ctx context.Context) error {
 	var err error
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		panicErr := recover()
-		if err != nil {
-			fmt.Printf("db transaction panics with error: %v\n", panicErr)
-		}
-
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			err = errors.Join(err, fmt.Errorf("db internal err %w", rollbackErr))
-		}
-	}()
-
 	q := prepareGetUserQuery()
-	rows, err := tx.QueryContext(ctx, q.request, q.args...)
+	rows, err := s.db.QueryContext(ctx, q.request, q.args...)
 	if err != nil {
 		return err
 	}
@@ -152,12 +136,12 @@ func (s *DbStorage) changeCurrentUserStatus(ctx context.Context) error {
 	}
 
 	q = prepareChangeActiveQuery(u.Login)
-	_, err = tx.Exec(q.request, q.args...)
+	_, err = s.db.ExecContext(ctx, q.request, q.args...)
 	if err != nil {
 		return err
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 func isUniqueConstraint(err error) bool {

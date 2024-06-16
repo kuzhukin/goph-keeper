@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kuzhukin/goph-keeper/internal/utils"
+	"github.com/kuzhukin/goph-keeper/internal/yaml"
 )
 
 const (
@@ -27,13 +27,13 @@ func ReadConfig(filename string) (*Config, error) {
 
 	confFilePath := filepath.Join(dir, DefaultAppDirName, filename)
 
-	conf, err := utils.ReadYaml[Config](confFilePath)
+	conf, err := yaml.ReadYaml[Config](confFilePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			// write default config
 			conf = defaultConfig()
 
-			return conf, utils.WriteYaml(confFilePath, conf)
+			return conf, yaml.WriteYaml(confFilePath, conf)
 		}
 
 		return nil, err
@@ -75,7 +75,7 @@ func UpdateConfig(filename string, params map[string]string) error {
 		config.Database = database
 	}
 
-	return utils.WriteYaml(fullPath, config)
+	return yaml.WriteYaml(fullPath, config)
 }
 
 func defaultConfig() *Config {

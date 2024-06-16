@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/kuzhukin/goph-keeper/internal/utils"
+	"github.com/kuzhukin/goph-keeper/internal/yaml"
 )
 
 type Config struct {
@@ -10,5 +10,5 @@ type Config struct {
 }
 
 func ReadConfig(filename string) (*Config, error) {
-	return utils.ReadYaml[Config](filename)
+	return yaml.ReadYaml[Config](filename)
 }

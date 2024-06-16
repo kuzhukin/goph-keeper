@@ -7,7 +7,7 @@ const (
 		"token"         text NOT NULL,
 		"crypto_key" 	text NOT NULL,
 		"active"		integer NOT NULL,
-		PRIMARY KEY ("login", "password")
+		PRIMARY KEY "login"
 	);`
 
 	insertUser   = `INSERT INTO users ("login", "password", "token",  "crypto_key", "active") VALUES ($1, $2, $3, $4, 1);`
