@@ -1,6 +1,7 @@
 package sqlstorage
 
 import (
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"errors"
@@ -69,22 +70,34 @@ func (s *DbStorage) initTables() error {
 	return nil
 }
 
-func (s *DbStorage) Register(login string, password string, token, cryptoKey string) error {
+func (s *DbStorage) Register(
+	ctx context.Context,
+	login string,
+	password string,
+	token,
+	cryptoKey string,
+) error {
 	cryptoKeyBase64 := base64.RawStdEncoding.EncodeToString([]byte(cryptoKey))
 
-	if err := s.changeCurrentUserStatus(); err != nil {
+	if err := s.changeCurrentUserStatus(ctx); err != nil {
 		return err
 	}
 
 	fmt.Println("User was registred. Context was switched to a new user.")
 
-	return s.addNewUser(login, password, token, cryptoKeyBase64)
+	return s.addNewUser(ctx, login, password, token, cryptoKeyBase64)
 }
 
-func (s *DbStorage) addNewUser(login string, password string, token, cryptoKey string) error {
+func (s *DbStorage) addNewUser(
+	ctx context.Context,
+	login string,
+	password string,
+	token,
+	cryptoKey string,
+) error {
 	query := prepareInsertUserQuery(login, password, token, cryptoKey)
 
-	_, err := s.db.Exec(query.request, query.args...)
+	_, err := s.db.ExecContext(ctx, query.request, query.args...)
 	if err != nil {
 		if isUniqueConstraint(err) {
 			fmt.Println("User alreay registred in client")
@@ -98,10 +111,10 @@ func (s *DbStorage) addNewUser(login string, password string, token, cryptoKey s
 	return nil
 }
 
-func (s *DbStorage) changeCurrentUserStatus() error {
+func (s *DbStorage) changeCurrentUserStatus(ctx context.Context) error {
 	var err error
 
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -118,7 +131,7 @@ func (s *DbStorage) changeCurrentUserStatus() error {
 	}()
 
 	q := prepareGetUserQuery()
-	rows, err := tx.Query(q.request, q.args...)
+	rows, err := tx.QueryContext(ctx, q.request, q.args...)
 	if err != nil {
 		return err
 	}
@@ -158,10 +171,12 @@ func isUniqueConstraint(err error) bool {
 
 var ErrNotActiveOrRegistredUsers = errors.New("don't have active or registred users")
 
-func (s *DbStorage) GetActive() (*storage.User, error) {
+func (s *DbStorage) GetActive(
+	ctx context.Context,
+) (*storage.User, error) {
 	query := prepareGetUserQuery()
 
-	rows, err := s.db.Query(query.request)
+	rows, err := s.db.QueryContext(ctx, query.request)
 	if err != nil {
 		return nil, err
 	}
@@ -194,18 +209,26 @@ func (s *DbStorage) GetActive() (*storage.User, error) {
 	return user, nil
 }
 
-func (s *DbStorage) DeleteData(u *storage.User, r *storage.Record) error {
+func (s *DbStorage) DeleteData(
+	ctx context.Context,
+	u *storage.User,
+	r *storage.Record,
+) error {
 	q := prepareDeleteDataQuery(u.Login, r.Name)
 
-	_, err := s.db.Exec(q.request, q.args...)
+	_, err := s.db.ExecContext(ctx, q.request, q.args...)
 
 	return err
 }
 
 var ErrAlreadyExist = errors.New("already exist")
 
-func (s *DbStorage) CreateData(u *storage.User, r *storage.Record) error {
-	err := s.saveNewData(u, r)
+func (s *DbStorage) CreateData(
+	ctx context.Context,
+	u *storage.User,
+	r *storage.Record,
+) error {
+	err := s.saveNewData(ctx, u, r)
 	if err != nil {
 		if isUniqueConstraint(err) {
 			return ErrAlreadyExist
@@ -215,8 +238,12 @@ func (s *DbStorage) CreateData(u *storage.User, r *storage.Record) error {
 	return nil
 }
 
-func (s *DbStorage) UpdateData(u *storage.User, r *storage.Record) (uint64, bool, error) {
-	storedData, err := s.LoadData(u, r.Name)
+func (s *DbStorage) UpdateData(
+	ctx context.Context,
+	u *storage.User,
+	r *storage.Record,
+) (uint64, bool, error) {
+	storedData, err := s.LoadData(ctx, u, r.Name)
 	if err != nil {
 		return 0, false, fmt.Errorf("load data, err=%w", err)
 	}
@@ -225,17 +252,20 @@ func (s *DbStorage) UpdateData(u *storage.User, r *storage.Record) (uint64, bool
 		return storedData.Revision, false, nil
 	}
 
-	if err = s.updateData(u, r); err != nil {
+	if err = s.updateData(ctx, u, r); err != nil {
 		return 0, false, err
 	}
 
 	return storedData.Revision, true, nil
 }
 
-func (s *DbStorage) saveNewData(u *storage.User, r *storage.Record) error {
+func (s *DbStorage) saveNewData(
+	ctx context.Context,
+	u *storage.User,
+	r *storage.Record) error {
 	q := prepareAddDataQuery(u.Login, r.Name, r.Data)
 
-	res, err := s.db.Exec(q.request, q.args...)
+	res, err := s.db.ExecContext(ctx, q.request, q.args...)
 	if err != nil {
 		return err
 	}
@@ -248,10 +278,14 @@ func (s *DbStorage) saveNewData(u *storage.User, r *storage.Record) error {
 	return nil
 }
 
-func (s *DbStorage) updateData(u *storage.User, r *storage.Record) error {
+func (s *DbStorage) updateData(
+	ctx context.Context,
+	u *storage.User,
+	r *storage.Record,
+) error {
 	q := prepareUpdateDataQuery(u.Login, r.Name, r.Data)
 
-	res, err := s.db.Exec(q.request, q.args...)
+	res, err := s.db.ExecContext(ctx, q.request, q.args...)
 	if err != nil {
 		return err
 	}
@@ -266,10 +300,14 @@ func (s *DbStorage) updateData(u *storage.User, r *storage.Record) error {
 
 var ErrDataNotExist = errors.New("data not exist")
 
-func (s *DbStorage) LoadData(u *storage.User, name string) (*storage.Record, error) {
+func (s *DbStorage) LoadData(
+	ctx context.Context,
+	u *storage.User,
+	name string,
+) (*storage.Record, error) {
 	query := prepareGetDataQuery(u.Login, name)
 
-	rows, err := s.db.Query(query.request, query.args...)
+	rows, err := s.db.QueryContext(ctx, query.request, query.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -288,10 +326,13 @@ func (s *DbStorage) LoadData(u *storage.User, name string) (*storage.Record, err
 	return record, nil
 }
 
-func (s *DbStorage) ListData(u *storage.User) ([]*storage.Record, error) {
+func (s *DbStorage) ListData(
+	ctx context.Context,
+	u *storage.User,
+) ([]*storage.Record, error) {
 	query := prepareListDataQuery(u.Login)
 
-	rows, err := s.db.Query(query.request, query.args...)
+	rows, err := s.db.QueryContext(ctx, query.request, query.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +358,11 @@ func (s *DbStorage) ListData(u *storage.User) ([]*storage.Record, error) {
 	return records, nil
 }
 
-func (s *DbStorage) CreateCard(u *storage.User, c *storage.BankCard) (string, error) {
+func (s *DbStorage) CreateCard(
+	ctx context.Context,
+	u *storage.User,
+	c *storage.BankCard,
+) (string, error) {
 	data, err := serializeUserBankCard(u, c)
 	if err != nil {
 		return "", fmt.Errorf("serialize card err=%w", err)
@@ -325,7 +370,7 @@ func (s *DbStorage) CreateCard(u *storage.User, c *storage.BankCard) (string, er
 
 	query := prepareAddCard(u.Login, c.Number, data)
 
-	_, err = s.db.Exec(query.request, query.args...)
+	_, err = s.db.ExecContext(ctx, query.request, query.args...)
 	if err != nil {
 		if isUniqueConstraint(err) {
 			return "", ErrAlreadyExist
@@ -337,18 +382,25 @@ func (s *DbStorage) CreateCard(u *storage.User, c *storage.BankCard) (string, er
 	return data, nil
 }
 
-func (s *DbStorage) DeleteCard(u *storage.User, number string) error {
+func (s *DbStorage) DeleteCard(
+	ctx context.Context,
+	u *storage.User,
+	number string,
+) error {
 	query := prepareDeleteCard(u.Login, number)
 
-	_, err := s.db.Exec(query.request, query.args...)
+	_, err := s.db.ExecContext(ctx, query.request, query.args...)
 
 	return err
 }
 
-func (s *DbStorage) ListCard(u *storage.User) ([]*storage.BankCard, error) {
+func (s *DbStorage) ListCard(
+	ctx context.Context,
+	u *storage.User,
+) ([]*storage.BankCard, error) {
 	query := prepareListCard(u.Login)
 
-	rows, err := s.db.Query(query.request, query.args...)
+	rows, err := s.db.QueryContext(ctx, query.request, query.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +462,11 @@ func desirializeUserBankCard(u *storage.User, data string) (*storage.BankCard, e
 	return card, nil
 }
 
-func (s *DbStorage) CreateSecret(u *storage.User, secret *storage.Secret) (string, error) {
+func (s *DbStorage) CreateSecret(
+	ctx context.Context,
+	u *storage.User,
+	secret *storage.Secret,
+) (string, error) {
 	crypt, err := gophcrypto.New(u.CryptoKey)
 	if err != nil {
 		return "", err
@@ -436,9 +492,13 @@ func (s *DbStorage) CreateSecret(u *storage.User, secret *storage.Secret) (strin
 	return cryptedSecret, nil
 }
 
-func (s *DbStorage) GetSecret(u *storage.User, secretName string) (*storage.Secret, error) {
+func (s *DbStorage) GetSecret(
+	ctx context.Context,
+	u *storage.User,
+	secretName string,
+) (*storage.Secret, error) {
 	q := preareGetSecretQuery(u.Login, secretName)
-	rows, err := s.db.Query(q.request, q.args...)
+	rows, err := s.db.QueryContext(ctx, q.request, q.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -468,10 +528,14 @@ func (s *DbStorage) GetSecret(u *storage.User, secretName string) (*storage.Secr
 	return secret, nil
 }
 
-func (s *DbStorage) DeleteSecret(u *storage.User, secretKey string) error {
+func (s *DbStorage) DeleteSecret(
+	ctx context.Context,
+	u *storage.User,
+	secretKey string,
+) error {
 	q := prepareDeleteSecretQuery(u.Login, secretKey)
 
-	_, err := s.db.Exec(q.request, q.args...)
+	_, err := s.db.ExecContext(ctx, q.request, q.args...)
 
 	return err
 }

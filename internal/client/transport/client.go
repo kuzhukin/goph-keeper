@@ -1,4 +1,4 @@
-package client
+package transport
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ type Client struct {
 	done     chan error
 }
 
-func newClient(config *config.Config) *Client {
+func NewClient(config *config.Config) *Client {
 	return &Client{
 		hostport: config.Hostport,
 		done:     make(chan error),

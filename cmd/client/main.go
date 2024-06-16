@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/kuzhukin/goph-keeper/internal/client"
+	"github.com/kuzhukin/goph-keeper/internal/client/cli"
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
 
@@ -18,7 +18,7 @@ func main() {
 }
 
 func run() error {
-	app, err := client.NewApplication()
+	app, err := cli.NewApplication()
 	if err != nil {
 		return err
 	}
