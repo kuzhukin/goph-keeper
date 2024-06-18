@@ -10,6 +10,7 @@ import (
 
 	"github.com/kuzhukin/goph-keeper/internal/server"
 	"github.com/kuzhukin/goph-keeper/internal/server/config"
+	"github.com/kuzhukin/goph-keeper/internal/yaml"
 	"github.com/kuzhukin/goph-keeper/internal/zlog"
 )
 
@@ -32,7 +33,7 @@ func run() error {
 
 	configPath := flag.String("c", getenv("CONFIG_FILE", "config.yaml"), "Path config file")
 
-	config, err := config.ReadConfig(*configPath)
+	config, err := yaml.ReadYaml[config.Config](*configPath)
 	if err != nil {
 		return fmt.Errorf("read config, err=%w", err)
 	}

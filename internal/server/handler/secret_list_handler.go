@@ -8,8 +8,8 @@ type SecretListHandler struct {
 	storage SecretStorage
 }
 
-func NewSecretListHandler(storage DataStorage) *DataHandler {
-	return &DataHandler{storage: storage}
+func NewSecretListHandler(storage SecretStorage) *SecretListHandler {
+	return &SecretListHandler{storage: storage}
 }
 
 type SecretListResponse struct {

@@ -8,8 +8,8 @@ type ListDataHandler struct {
 	storage DataStorage
 }
 
-func NewListDataHandler(storage DataStorage) *DataHandler {
-	return &DataHandler{storage: storage}
+func NewListDataHandler(storage DataStorage) *ListDataHandler {
+	return &ListDataHandler{storage: storage}
 }
 
 type ListDataResponse struct {

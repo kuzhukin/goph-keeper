@@ -20,6 +20,7 @@ func NewAuthMiddleware(c UserChecker) *AuthModdleware {
 	}
 }
 
+//go:generate mockgen -source=auth.go -destination=./mock_user_checker.go -package=middleware
 type UserChecker interface {
 	Check(ctx context.Context, token string) error
 }

@@ -35,6 +35,22 @@ func TestSecretHandlerCreate(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestSecretHandlerCreateBadRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockSecretStorage := NewMockSecretStorage(ctrl)
+	h := NewSecretDataHandler(mockSecretStorage)
+
+	// request without body
+	r := httptest.NewRequest(http.MethodPut, endpoint.WalletEndpoint, nil)
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestSecretHandlerGet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -65,6 +81,22 @@ func TestSecretHandlerGet(t *testing.T) {
 	require.Equal(t, "value", resp.Data)
 }
 
+func TestSecretHandlerGetBadRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockSecretStorage := NewMockSecretStorage(ctrl)
+	h := NewSecretDataHandler(mockSecretStorage)
+
+	// request without body
+	r := httptest.NewRequest(http.MethodGet, endpoint.WalletEndpoint, nil)
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestSecretHandlerDelete(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -84,4 +116,20 @@ func TestSecretHandlerDelete(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestSecretHandlerDeleteBadRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockSecretStorage := NewMockSecretStorage(ctrl)
+	h := NewSecretDataHandler(mockSecretStorage)
+
+	// request without body
+	r := httptest.NewRequest(http.MethodDelete, endpoint.WalletEndpoint, nil)
+	r = r.WithContext(context.WithValue(r.Context(), AuthInfo("token"), testToken))
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
