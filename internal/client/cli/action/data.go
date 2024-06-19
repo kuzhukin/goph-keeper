@@ -1,152 +1,157 @@
 package action
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 
-	"github.com/kuzhukin/goph-keeper/internal/client/cli/args"
 	"github.com/kuzhukin/goph-keeper/internal/client/gophcrypto"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage/sqlstorage"
 	"github.com/kuzhukin/goph-keeper/internal/client/transport"
-	"github.com/urfave/cli/v2"
 )
 
 func CreateDataAction(
+	ctx context.Context,
 	user *storage.User,
 	s storage.DataStorage,
-	client *transport.Client,
-) func(ctx *cli.Context) error {
-	return func(ctx *cli.Context) error {
-		r, err := readDataFromFileArg(ctx, user)
-		if err != nil {
-			return fmt.Errorf("read data from file, err=%w", err)
-		}
-
-		err = s.CreateData(ctx.Context, user, r)
-		if err != nil && !errors.Is(err, sqlstorage.ErrAlreadyExist) {
-			return err
-		}
-
-		r.Revision = 1
-
-		err = client.UploadBinaryData(ctx.Context, user, r)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Data from file=%s is saved\ns", r.Name)
-
-		return nil
+	client transport.BinaryDataClient,
+	filename string,
+) error {
+	r, err := readDataFromFile(filename, user)
+	if err != nil {
+		return fmt.Errorf("read data from file, err=%w", err)
 	}
+
+	err = s.CreateData(ctx, user, r)
+	if err != nil && !errors.Is(err, sqlstorage.ErrAlreadyExist) {
+		return err
+	}
+
+	r.Revision = 1
+
+	err = client.UploadBinaryData(ctx, user, r)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Data from file=%s is saved\ns", r.Name)
+
+	return nil
 }
 
-func GetDataCmdHandler(
+func GetDataAction(
+	ctx context.Context,
 	user *storage.User,
 	s storage.DataStorage,
-	client *transport.Client,
-) func(ctx *cli.Context) error {
-	return func(ctx *cli.Context) error {
-		filename := args.GetFileArg(ctx)
+	client transport.BinaryDataClient,
+	filename string,
+) error {
+	var r *storage.Record
 
-		file, err := client.DownloadBinaryData(ctx.Context, user, filename)
-		if err != nil {
-			return err
-		}
-
-		decryptedData, err := decryptUserData(user, []byte(file.Data))
-		if err != nil {
-			return err
-		}
-
-		fmt.Println(string(decryptedData))
-
-		return nil
-	}
-}
-
-func ListDataAction(
-	user *storage.User,
-	s storage.DataStorage,
-	client *transport.Client,
-) func(ctx *cli.Context) error {
-	return func(ctx *cli.Context) error {
-		records, err := s.ListData(ctx.Context, user)
-		if err != nil {
-			return err
-		}
-
-		if len(records) == 0 {
-			fmt.Println("Records isn't exist")
-		}
-
-		for _, r := range records {
-			fmt.Printf("\t%s (%d)\n", r.Name, r.Revision)
-		}
-
-		return nil
-	}
-}
-
-func UpdateAction(
-	user *storage.User,
-	s storage.DataStorage,
-	client *transport.Client,
-) func(ctx *cli.Context) error {
-	return func(ctx *cli.Context) error {
-		r, err := readDataFromFileArg(ctx, user)
-		if err != nil {
-			return err
-		}
-
-		rev, needUpload, err := s.UpdateData(ctx.Context, user, r)
-		if err != nil {
-			return err
-		}
-
-		if needUpload {
-			r.Revision = rev
-
-			err = client.UpdateBinaryData(ctx.Context, user, r)
+	r, err := s.LoadData(ctx, user, filename)
+	if err != nil {
+		if errors.Is(err, sqlstorage.ErrDataNotExist) {
+			r, err = client.DownloadBinaryData(ctx, user, filename)
 			if err != nil {
 				return err
 			}
-		} else {
-			fmt.Println("Nothing for updating")
-		}
 
-		return nil
+			if err = s.CreateData(ctx, user, r); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
+
+	if r == nil {
+		return sqlstorage.ErrDataNotExist
+	}
+
+	decryptedData, err := decryptUserData(user, []byte(r.Data))
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(decryptedData))
+
+	return nil
 }
 
-func DeleteBinaryDataAction(
+func ListDataAction(
+	ctx context.Context,
 	user *storage.User,
 	s storage.DataStorage,
-	client *transport.Client,
-) func(ctx *cli.Context) error {
-	return func(ctx *cli.Context) error {
-		r, err := readDataFromFileArg(ctx, user)
+	_ transport.BinaryDataClient,
+) error {
+	records, err := s.ListData(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	if len(records) == 0 {
+		fmt.Println("Records isn't exist")
+	}
+
+	for _, r := range records {
+		fmt.Printf("\t%s (%d)\n", r.Name, r.Revision)
+	}
+
+	return nil
+}
+
+func UpdateAction(
+	ctx context.Context,
+	user *storage.User,
+	s storage.DataStorage,
+	client transport.BinaryDataClient,
+	filename string,
+) error {
+	r, err := readDataFromFile(filename, user)
+	if err != nil {
+		return fmt.Errorf("read data from file, err=%w", err)
+	}
+
+	rev, needUpload, err := s.UpdateData(ctx, user, r)
+	if err != nil {
+		return err
+	}
+
+	if needUpload {
+		r.Revision = rev
+
+		err = client.UpdateBinaryData(ctx, user, r)
 		if err != nil {
 			return err
 		}
-
-		if err = s.DeleteData(ctx.Context, user, r); err != nil {
-			return err
-		}
-
-		if err = client.DeleteBinaryData(ctx.Context, user.Login, user.Password, r.Name); err != nil {
-			return err
-		}
-
-		return nil
+	} else {
+		fmt.Println("Nothing for updating")
 	}
 
+	return nil
 }
 
-func readDataFromFileArg(ctx *cli.Context, user *storage.User) (*storage.Record, error) {
-	filename := args.GetFileArg(ctx)
+func DeleteBinaryDataAction(
+	ctx context.Context,
+	user *storage.User,
+	s storage.DataStorage,
+	client transport.BinaryDataClient,
+	name string,
+) error {
+	if err := s.DeleteData(ctx, user, name); err != nil {
+		return err
+	}
 
+	if err := client.DeleteBinaryData(ctx, user, name); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readDataFromFile(filename string, user *storage.User) (*storage.Record, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err

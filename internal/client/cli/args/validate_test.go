@@ -44,3 +44,11 @@ func TestValidateOwnerName(t *testing.T) {
 	_, ok = validateCardOwner("IvanPetrov")
 	require.False(t, ok)
 }
+
+func TestValidateExpDate(t *testing.T) {
+	_, ok1 := validateExpDate("2003-12-31")
+	require.True(t, ok1)
+
+	_, ok2 := validateExpDate("31-12-2003")
+	require.False(t, ok2)
+}

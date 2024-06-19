@@ -57,11 +57,6 @@ coverage_total: test_with_coverage
 coverage_html: test_with_coverage
 	${GO} tool cover -html=coverage.out -o coverage.html && firefox ./coverage.html
 
-.PHONY: coverage_total
-coverage_total: test_with_coverage
-	PERCENTAGE=$$(go tool cover -func=coverage.out | grep "total:" | tr -s '\t' | cut -f3); \
-	echo Total coverage: $${PERCENTAGE}
-
 run_server:
 	docker stop gophkeeper-postgres > /dev/null
 	docker rm gophkeeper-postgres > /dev/null

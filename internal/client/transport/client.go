@@ -16,6 +16,30 @@ import (
 	"github.com/kuzhukin/goph-keeper/internal/server/handler"
 )
 
+//go:generate mockgen -source=client.go -destination=./mock_client.go -package=transport
+type BinaryDataClient interface {
+	UploadBinaryData(ctx context.Context, u *storage.User, r *storage.Record) error
+	UpdateBinaryData(ctx context.Context, u *storage.User, r *storage.Record) error
+	DownloadBinaryData(ctx context.Context, u *storage.User, dataKey string) (*storage.Record, error)
+	DeleteBinaryData(ctx context.Context, u *storage.User, dataKey string) error
+}
+
+type RegisterClient interface {
+	RegisterUser(ctx context.Context, login string, password string) (string, error)
+}
+
+type SecretDataClient interface {
+	CreateSecret(ctx context.Context, userToken string, secretName string, secretData string) error
+	DeleteSecret(ctx context.Context, userToken string, secretKey string) error
+	GetSecret(ctx context.Context, userToken string, secretName string) (*storage.Secret, error)
+}
+
+type WalletClient interface {
+	CreateCardData(ctx context.Context, userToken string, cardNumber string, cardData string) error
+	DeleteCardData(ctx context.Context, userToken string, cardNumber string) error
+	ListCardData(ctx context.Context, userToken string) ([]*handler.CardData, error)
+}
+
 type Client struct {
 	hostport string
 	done     chan error
@@ -127,8 +151,7 @@ func (c *Client) RegisterUser(
 
 func (c *Client) DeleteBinaryData(
 	ctx context.Context,
-	login string,
-	password string,
+	u *storage.User,
 	dataKey string,
 ) error {
 	uri := makeURI(c.hostport, endpoint.BinaryDataEndpoint)
@@ -137,7 +160,11 @@ func (c *Client) DeleteBinaryData(
 		Key: dataKey,
 	}
 
-	return request(ctx, uri, http.MethodDelete, map[string]string{password: password}, deleteRequest)
+	headers := map[string]string{
+		"token": u.Token,
+	}
+
+	return request(ctx, uri, http.MethodDelete, headers, deleteRequest)
 }
 
 func (c *Client) CreateCardData(
@@ -201,16 +228,19 @@ func (c *Client) DeleteSecret(
 
 	saveRequest := &handler.DeleteSecretRequest{Key: secretKey}
 
-	return request(ctx, uri, http.MethodPut, map[string]string{"token": userToken}, saveRequest)
+	return request(ctx, uri, http.MethodDelete, map[string]string{"token": userToken}, saveRequest)
 }
 
 func (c *Client) GetSecret(
 	ctx context.Context,
 	userToken string,
+	secretName string,
 ) (*storage.Secret, error) {
 	uri := makeURI(c.hostport, endpoint.SecretEndpoint)
 
-	resp, err := requestAndParse[handler.GetSecretResponse](ctx, uri, http.MethodGet, map[string]string{"token": userToken}, nil)
+	request := handler.GetSecretDataRequest{Key: secretName}
+
+	resp, err := requestAndParse[handler.GetSecretResponse](ctx, uri, http.MethodGet, map[string]string{"token": userToken}, request)
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,6 @@ package gophcrypto
 
 import (
 	"crypto/aes"
-	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"testing"
@@ -31,15 +30,11 @@ func TestCrypto(t *testing.T) {
 	fmt.Println("decrypted", string(decrypted))
 
 	require.Equal(t, data, decrypted)
-
 }
 
-func generateRandom(size int) ([]byte, error) {
-	b := make([]byte, size)
-	_, err := rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
+func TestGenerateCryptoKey(t *testing.T) {
+	key, err := GenerateCryptoKey()
+	require.NoError(t, err)
+	require.NotNil(t, key)
+	require.Len(t, key, aes.BlockSize)
 }

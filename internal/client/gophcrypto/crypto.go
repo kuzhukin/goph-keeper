@@ -3,6 +3,7 @@ package gophcrypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -50,4 +51,25 @@ func (c *Cryptographer) Decrypt(base64data []byte) ([]byte, error) {
 	}
 
 	return dst, nil
+}
+
+func GenerateCryptoKey() ([]byte, error) {
+	const keyLenDefault = aes.BlockSize
+
+	data, err := generateRandom(keyLenDefault)
+	if err != nil {
+		return nil, nil
+	}
+
+	return data, nil
+}
+
+func generateRandom(size int) ([]byte, error) {
+	b := make([]byte, size)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+
+	return b, nil
 }

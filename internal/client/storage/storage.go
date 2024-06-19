@@ -2,6 +2,7 @@ package storage
 
 import "context"
 
+//go:generate mockgen -source=storage.go -destination=./mock_storage.go -package=storage
 type Storage interface {
 	UserStorage
 	DataStorage
@@ -15,7 +16,7 @@ type DataStorage interface {
 	UpdateData(ctx context.Context, u *User, r *Record) (uint64, bool, error)
 	LoadData(ctx context.Context, u *User, name string) (*Record, error)
 	ListData(ctx context.Context, u *User) ([]*Record, error)
-	DeleteData(ctx context.Context, u *User, r *Record) error
+	DeleteData(ctx context.Context, u *User, name string) error
 }
 
 type UserStorage interface {

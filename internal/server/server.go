@@ -33,7 +33,6 @@ func StartNew(config *config.Config) (*Server, error) {
 
 	authMiddleware := middleware.NewAuthMiddleware(storage)
 
-	router.Use(middleware.LoggingHTTPHandler)
 	router.Use(authMiddleware.Middleware)
 
 	router.Handle(endpoint.RegisterEndpoint, handler.NewRegistrationHandler(storage))

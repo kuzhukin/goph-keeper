@@ -196,9 +196,9 @@ func (s *DbStorage) GetActive(
 func (s *DbStorage) DeleteData(
 	ctx context.Context,
 	u *storage.User,
-	r *storage.Record,
+	name string,
 ) error {
-	q := prepareDeleteDataQuery(u.Login, r.Name)
+	q := prepareDeleteDataQuery(u.Login, name)
 
 	_, err := s.db.ExecContext(ctx, q.request, q.args...)
 
@@ -451,14 +451,7 @@ func (s *DbStorage) CreateSecret(
 	u *storage.User,
 	secret *storage.Secret,
 ) (string, error) {
-	crypt, err := gophcrypto.New(u.CryptoKey)
-	if err != nil {
-		return "", err
-	}
-
-	serializer := NewSerializer(crypt)
-
-	cryptedSecret, err := serializer.SerializeSecret(secret)
+	cryptedSecret, err := serializeSecret(u, secret)
 	if err != nil {
 		return "", err
 	}
@@ -497,6 +490,10 @@ func (s *DbStorage) GetSecret(
 		return nil, err
 	}
 
+	return deserializeSecret(u, cryptedData)
+}
+
+func deserializeSecret(u *storage.User, cryptedData string) (*storage.Secret, error) {
 	crypt, err := gophcrypto.New(u.CryptoKey)
 	if err != nil {
 		return nil, err
@@ -510,6 +507,22 @@ func (s *DbStorage) GetSecret(
 	}
 
 	return secret, nil
+}
+
+func serializeSecret(u *storage.User, s *storage.Secret) (string, error) {
+	crypt, err := gophcrypto.New(u.CryptoKey)
+	if err != nil {
+		return "", err
+	}
+
+	serializer := NewSerializer(crypt)
+
+	cryptedSecret, err := serializer.SerializeSecret(s)
+	if err != nil {
+		return "", err
+	}
+
+	return cryptedSecret, nil
 }
 
 func (s *DbStorage) DeleteSecret(

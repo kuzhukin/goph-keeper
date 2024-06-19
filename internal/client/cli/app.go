@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kuzhukin/goph-keeper/internal/client/cli/action"
+	"github.com/kuzhukin/goph-keeper/internal/client/cli/args"
 	"github.com/kuzhukin/goph-keeper/internal/client/config"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage"
 	"github.com/kuzhukin/goph-keeper/internal/client/storage/sqlstorage"
@@ -118,7 +119,14 @@ func (a *Application) makeCreateSecretCmd() *cli.Command {
 			&cli.StringFlag{Name: "key"},
 			&cli.StringFlag{Name: "value"},
 		},
-		Action: action.CreateSecretActionHandler(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			secret, err := args.GetSecret(ctx)
+			if err != nil {
+				cli.ShowSubcommandHelpAndExit(ctx, 1)
+			}
+
+			return action.CreateSecretAction(ctx.Context, a.user, a.storage, a.client, secret)
+		},
 	}
 }
 
@@ -131,7 +139,14 @@ func (a *Application) makeDeleteSecretCmd() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name"},
 		},
-		Action: action.DeleteSecretActionHandler(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			secretName, err := args.GetSecretName(ctx)
+			if err != nil {
+				cli.ShowSubcommandHelpAndExit(ctx, 1)
+			}
+
+			return action.DeleteSecretAction(ctx.Context, a.user, a.storage, a.client, secretName)
+		},
 	}
 }
 
@@ -144,7 +159,14 @@ func (a *Application) makeGetSecretCmd() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "name"},
 		},
-		Action: action.GetSecretActionHandler(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			secretName, err := args.GetSecretName(ctx)
+			if err != nil {
+				cli.ShowSubcommandHelpAndExit(ctx, 1)
+			}
+
+			return action.GetSecretAction(ctx.Context, a.user, a.storage, a.client, secretName)
+		},
 	}
 }
 
@@ -173,7 +195,14 @@ func (a *Application) makeCreateCardCmd() *cli.Command {
 			&cli.StringFlag{Name: "cvv"},
 			&cli.StringFlag{Name: "owner"},
 		},
-		Action: action.CreateCardActionHandler(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			card, err := args.GetBankCard(ctx)
+			if err != nil {
+				cli.ShowSubcommandHelpAndExit(ctx, 1)
+			}
+
+			return action.CreateCardActionHandler(ctx.Context, a.user, a.storage, a.client, card)
+		},
 	}
 }
 
@@ -186,7 +215,14 @@ func (a *Application) makeDeleteCardCmd() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "number"},
 		},
-		Action: action.DeleteCardActionHandler(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			card, err := args.GetCardNumber(ctx)
+			if err != nil {
+				cli.ShowSubcommandHelpAndExit(ctx, 1)
+			}
+
+			return action.DeleteCardActionHandler(ctx.Context, a.user, a.storage, a.client, card)
+		},
 	}
 }
 
@@ -196,7 +232,9 @@ func (a *Application) makeListCardCmd() *cli.Command {
 		Usage:        "List with all user cards",
 		BashComplete: cli.DefaultAppComplete,
 		Before:       a.checkConfig,
-		Action:       action.ListCardActionHandler(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			return action.ListCardActionHandler(ctx.Context, a.user, a.storage, a.client)
+		},
 	}
 }
 
@@ -252,7 +290,12 @@ func (a *Application) makeRegisterCmd() *cli.Command {
 				Usage: "User's password",
 			},
 		},
-		Action: action.RegisterAction(a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			login := args.GetLogin(ctx)
+			pass := args.GetPassword(ctx)
+
+			return action.RegisterAction(ctx.Context, a.storage, a.client, login, pass)
+		},
 	}
 }
 
@@ -270,7 +313,11 @@ func (a *Application) makeCreateDataCmd() *cli.Command {
 			},
 		},
 		Description: "Read file and send it to server",
-		Action:      action.CreateDataAction(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			filename := args.GetFileArg(ctx)
+
+			return action.CreateDataAction(ctx.Context, a.user, a.storage, a.client, filename)
+		},
 	}
 }
 
@@ -292,7 +339,11 @@ func (a *Application) makeGetDataCmd() *cli.Command {
 				Usage:   "Output directory",
 			},
 		},
-		Action: action.GetDataCmdHandler(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			filename := args.GetFileArg(ctx)
+
+			return action.GetDataAction(ctx.Context, a.user, a.storage, a.client, filename)
+		},
 	}
 }
 
@@ -301,7 +352,9 @@ func (a *Application) makeListDataCmd() *cli.Command {
 		Name:   "list",
 		Usage:  "Print local data names and revisions",
 		Before: a.checkConfig,
-		Action: action.ListDataAction(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			return action.ListDataAction(ctx.Context, a.user, a.storage, a.client)
+		},
 	}
 }
 
@@ -322,7 +375,11 @@ func (a *Application) makeUpdateDataCmd() *cli.Command {
 				Usage: "update date",
 			},
 		},
-		Action: action.UpdateAction(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			filename := args.GetFileArg(ctx)
+
+			return action.UpdateAction(ctx.Context, a.user, a.storage, a.client, filename)
+		},
 	}
 }
 
@@ -340,7 +397,11 @@ func (a *Application) makeDeleteDataCmd() *cli.Command {
 				Usage:   "path to file",
 			},
 		},
-		Action: action.DeleteBinaryDataAction(a.user, a.storage, a.client),
+		Action: func(ctx *cli.Context) error {
+			filename := args.GetFileArg(ctx)
+
+			return action.DeleteBinaryDataAction(ctx.Context, a.user, a.storage, a.client, filename)
+		},
 	}
 }
 
